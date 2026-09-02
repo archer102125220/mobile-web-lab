@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <title>Navigator Language 跨平台語系檢測實驗室 🧪</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">🌐</div>
+        <div>
+          <h1 class="brand-title">Navigator Language 實驗室</h1>
+          <p class="brand-subtitle">Cross-Platform Locale & Accept-Language Benchmark</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <div id="platform-pill" class="status-pill browser">
+          <span class="status-dot"></span>
+          <span id="platform-label">偵測環境中...</span>
+        </div>
+        <div id="server-pill" class="status-pill online">
+          <span class="status-dot"></span>
+          <span>Web Server 連線中</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs-wrapper">
+      <div class="nav-tabs" role="tablist">
+        <button class="nav-tab active" data-tab="tab-overview" role="tab">
+          📊 即時語系總覽
+        </button>
+        <button class="nav-tab" data-tab="tab-matrix" role="tab">
+          ⚖️ 差異比對矩陣
+        </button>
+        <button class="nav-tab" data-tab="tab-intl" role="tab">
+          🧰 Intl API 檢測
+        </button>
+        <button class="nav-tab" data-tab="tab-simulator" data-tab-name="negotiator" role="tab">
+          🎯 語系協商模擬器
+        </button>
+        <button class="nav-tab" data-tab="tab-events" role="tab">
+          ⚡ 動態事件測試
+        </button>
+        <button class="nav-tab" data-tab="tab-guide" role="tab">
+          📲 真機與雙平台指南
+        </button>
+      </div>
+    </nav>
+
+    <!-- TAB 1: Live Overview -->
+    <main id="tab-overview" class="tab-panel active">
+      <!-- Hero Primary Language -->
+      <section class="hero-card">
+        <div class="hero-main">
+          <span class="hero-label">主要判定語系 (Primary Detected Locale)</span>
+          <div class="hero-value">
+            <span id="hero-primary-lang">--</span>
+            <span id="hero-display-name" class="tag-badge cyan" style="font-size: 16px;">--</span>
+          </div>
+          <p class="hero-desc">
+            基於用戶端 <code class="tag-badge">navigator.language</code> 與 <code class="tag-badge">Intl</code> 解析出的核心 BCP 47 語言標籤。
+          </p>
+          <div class="hero-tags">
+            <span class="tag-badge indigo">Base: <strong id="hero-base-lang">--</strong></span>
+            <span class="tag-badge emerald">Region: <strong id="hero-region">--</strong></span>
+            <span class="tag-badge">Script: <strong id="hero-script">--</strong></span>
+            <span class="tag-badge">Timezone: <strong id="hero-timezone">--</strong></span>
+          </div>
+        </div>
+        <div>
+          <button id="btn-refresh-data" class="btn btn-primary">
+            🔄 重新整理檢測
+          </button>
+        </div>
+      </section>
+
+      <!-- 3-Column Inspector Grid -->
+      <div class="grid-3">
+        <!-- Card 1: Client-Side JS -->
+        <article class="card">
+          <div class="card-header">
+            <h2 class="card-title">🌐 Web 前端 (Client JS)</h2>
+            <span class="card-badge tag-badge cyan">Browser API</span>
+          </div>
+          <div class="data-list">
+            <div class="data-row">
+              <span class="data-label">navigator.language</span>
+              <span id="val-client-language" class="data-value highlight">--</span>
+            </div>
+            <div class="data-row" style="flex-direction: column; align-items: stretch;">
+              <div style="display: flex; justify-content: space-between;">
+                <span class="data-label">navigator.languages</span>
+                <span id="val-client-languages-count" class="data-value">0 個</span>
+              </div>
+              <div id="val-client-languages-list" class="lang-tag-list">
+                <span class="tag-badge">讀取中...</span>
+              </div>
+            </div>
+            <div class="data-row">
+              <span class="data-label">Intl Locale</span>
+              <span id="val-client-intl-locale" class="data-value">--</span>
+            </div>
+            <div class="data-row">
+              <span class="data-label">Intl Timezone</span>
+              <span id="val-client-intl-tz" class="data-value">--</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 2: Server-Side HTTP Headers -->
+        <article class="card">
+          <div class="card-header">
+            <h2 class="card-title">📡 後端視角 (Server HTTP)</h2>
+            <span class="card-badge tag-badge indigo">HTTP Headers</span>
+          </div>
+          <div class="data-list">
+            <div class="data-row" style="flex-direction: column; align-items: stretch;">
+              <span class="data-label">Accept-Language (Raw)</span>
+              <span id="val-server-raw-accept" class="data-value" style="text-align: left; margin-top: 4px; font-size: 11px;">--</span>
+            </div>
+            <div class="data-row" style="flex-direction: column; align-items: stretch;">
+              <span class="data-label">加權解析 (q-factor 排序)</span>
+              <div id="val-server-parsed-accept" class="lang-tag-list" style="margin-top: 6px;">
+                <span class="tag-badge">讀取中...</span>
+              </div>
+            </div>
+            <div class="data-row">
+              <span class="data-label">用戶端 IP</span>
+              <span id="val-server-client-ip" class="data-value">--</span>
+            </div>
+            <div class="data-row">
+              <span class="data-label">Sec-CH-UA-Platform</span>
+              <span id="val-server-ch-platform" class="data-value">--</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Card 3: Native OS / Bridge -->
+        <article class="card">
+          <div class="card-header">
+            <h2 class="card-title">📱 原生資訊 (Native Bridge)</h2>
+            <span id="native-badge" class="card-badge tag-badge emerald">Bridge Status</span>
+          </div>
+          <div class="data-list" id="native-info-list">
+            <div class="data-row">
+              <span class="data-label">Bridge 連線狀態</span>
+              <span id="val-native-status" class="data-value">偵測中...</span>
+            </div>
+            <div class="data-row">
+              <span class="data-label">原生系統語系</span>
+              <span id="val-native-system-locale" class="data-value">--</span>
+            </div>
+            <div class="data-row" style="flex-direction: column; align-items: stretch;">
+              <span class="data-label">原生偏好語系清單</span>
+              <div id="val-native-preferred-list" class="lang-tag-list" style="margin-top: 6px;">
+                <span class="tag-badge">--</span>
+              </div>
+            </div>
+            <div class="data-row">
+              <span class="data-label">原生時區 (TimeZone)</span>
+              <span id="val-native-timezone" class="data-value">--</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- Quick Tips -->
+      <div class="alert-note">
+        💡 <strong>測試提示</strong>：如果您是使用手機瀏覽器（Safari / Chrome）直接掃描 QR Code 連線，Native Bridge 將顯示「一般手機瀏覽器模式」；若是由 iOS / Android WebView Shell App 開啟，則會透過 JSBridge 自動同步 Native 原生語系清單！
+      </div>
+    </main>
+
+    <!-- TAB 2: Discrepancy Matrix -->
+    <section id="tab-matrix" class="tab-panel">
+      <div class="card" style="margin-bottom: 24px;">
+        <h2 class="card-title" style="font-size: 18px; margin-bottom: 8px;">⚖️ 跨平台語系決定機制與差異矩陣</h2>
+        <p style="font-size: 14px; color: var(--text-secondary);">
+          系統設定、App 偏好語系、獨立瀏覽器、WebView 容器與 HTTP 請求標頭之間的行為與差異比較：
+        </p>
+
+        <div class="table-container">
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>環境維度</th>
+                <th>iOS (Safari / WKWebView)</th>
+                <th>Android (Chrome / WebView)</th>
+                <th>核心差異與地雷說明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>navigator.language</strong></td>
+                <td>回傳系統或 App 偏好語系最優先項（如 <code>zh-TW</code>）</td>
+                <td>回傳系統或 Chrome 語系最優先項（如 <code>zh-TW</code>）</td>
+                <td>iOS 與 Android 通常皆遵循 BCP 47 標準，但大小寫或地區標記可能略有出入。</td>
+              </tr>
+              <tr>
+                <td><strong>navigator.languages</strong></td>
+                <td>回傳完整使用者語言偏好陣列（例如 <code>["zh-TW", "en-US"]</code>）</td>
+                <td><strong>注意：</strong>舊版 Android WebView 曾僅回傳 <code>[navigator.language]</code> 長度為 1</td>
+                <td>Chrome Android 會依 Chrome 設定排序，而 Android WebView 則依賴系統 <code>LocaleList</code>。</td>
+              </tr>
+              <tr>
+                <td><strong>App 獨立語系支援</strong></td>
+                <td>iOS 13+ 支援「設定 > App 偏好語言」，WKWebView 自動繼承</td>
+                <td>Android 13+ 支援 Per-App Language，需在 <code>setLocales()</code> 或 Manifest 適配</td>
+                <td>若 App 設定了獨立語系，WebView 內部的 <code>Accept-Language</code> 與 <code>navigator.language</code> 是否同步是一大測試重點。</td>
+              </tr>
+              <tr>
+                <td><strong>HTTP Accept-Language</strong></td>
+                <td>由 WebKit 自動產生帶 q-factor 標頭（如 <code>zh-TW,zh;q=0.9,en;q=0.8</code>）</td>
+                <td>由 Chromium 網路棧自動發送，格式通常包含語言及基底語言</td>
+                <td>伺服器端解析時需注意 q-value 降冪排序，不可僅取第一個逗號前的字串。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Deep Dive Insights -->
+      <div class="grid-2">
+        <div class="card">
+          <h3 class="card-title">🔍 iOS 平台特點</h3>
+          <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
+            • iOS WKWebView 預設共用系統 WebKit 執行個體，其語系順序高度依賴 <code>Locale.preferredLanguages</code>。<br>
+            • 當使用者在 iOS「設定 > 該 App > 語言」切換獨立語系後，WKWebView 會在重新載入時自動反映該語系至 <code>navigator.language</code> 與 <code>Accept-Language</code>。
+          </p>
+        </div>
+        <div class="card">
+          <h3 class="card-title">🔍 Android 平台特點</h3>
+          <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
+            • Android Chrome 與 Android System WebView 是分開的套件。<br>
+            • 在 Android WebView 中，若 App 透過 <code>Context.createConfigurationContext</code> 或 <code>LocaleManager</code> 切換語系，必須確保 WebView 實例重新加載以套用新的 <code>WebSettings.defaultUserAgent</code> 與語系設定。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: Intl Diagnostic Suite -->
+    <section id="tab-intl" class="tab-panel">
+      <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header">
+          <h2 class="card-title">🧰 Intl API 格式化實測與解析</h2>
+          <span class="tag-badge cyan">ECMAScript 402</span>
+        </div>
+        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">
+          驗證目前環境下 JavaScript <code class="tag-badge">Intl</code> 國際化 API 針對不同資料型態的實際輸出結果：
+        </p>
+
+        <div class="grid-2">
+          <!-- DateTimeFormat -->
+          <div class="card" style="background: var(--bg-secondary);">
+            <h3 class="card-title" style="font-size: 15px;">📅 日期與時間 (Intl.DateTimeFormat)</h3>
+            <div class="data-list" style="margin-top: 12px;">
+              <div class="data-row">
+                <span class="data-label">完整日期時間:</span>
+                <span id="intl-dt-full" class="data-value highlight">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">星期與農曆/格式:</span>
+                <span id="intl-dt-weekday" class="data-value">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">相對時間 (3天前):</span>
+                <span id="intl-rel-time" class="data-value">--</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- NumberFormat & Currency -->
+          <div class="card" style="background: var(--bg-secondary);">
+            <h3 class="card-title" style="font-size: 15px;">💰 數值與貨幣 (Intl.NumberFormat)</h3>
+            <div class="data-list" style="margin-top: 12px;">
+              <div class="data-row">
+                <span class="data-label">在地幣別 (TWD / 預設):</span>
+                <span id="intl-num-currency" class="data-value highlight">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">緊湊數字 (Compact):</span>
+                <span id="intl-num-compact" class="data-value">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">百分比格式:</span>
+                <span id="intl-num-percent" class="data-value">--</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- DisplayNames -->
+          <div class="card" style="background: var(--bg-secondary);">
+            <h3 class="card-title" style="font-size: 15px;">🔤 語言名稱在地化 (Intl.DisplayNames)</h3>
+            <div class="data-list" style="margin-top: 12px;">
+              <div class="data-row">
+                <span class="data-label">"en" 顯示為:</span>
+                <span id="intl-dn-en" class="data-value">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">"zh-TW" 顯示為:</span>
+                <span id="intl-dn-zhtw" class="data-value">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">"ja" 顯示為:</span>
+                <span id="intl-dn-ja" class="data-value">--</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- PluralRules & Collator -->
+          <div class="card" style="background: var(--bg-secondary);">
+            <h3 class="card-title" style="font-size: 15px;">🔢 複數與排序規則 (PluralRules & Collator)</h3>
+            <div class="data-list" style="margin-top: 12px;">
+              <div class="data-row">
+                <span class="data-label">複數規則 (n=1):</span>
+                <span id="intl-plural-1" class="data-value">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">複數規則 (n=2):</span>
+                <span id="intl-plural-2" class="data-value">--</span>
+              </div>
+              <div class="data-row">
+                <span class="data-label">字串排序測試:</span>
+                <span id="intl-collator-test" class="data-value">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Language Negotiation Simulator -->
+    <section id="tab-simulator" class="tab-panel">
+      <div class="card" style="margin-bottom: 24px;">
+        <h2 class="card-title" style="font-size: 18px; margin-bottom: 8px;">🎯 多語系協商與 Fallback 模擬器</h2>
+        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">
+          輸入網站實際支援的語系清單，模擬後端或前端在接收到當前用戶的語言偏好時，會如何做出最終的語言匹配決策：
+        </p>
+
+        <div class="simulator-box">
+          <div class="form-group">
+            <label class="form-label" for="sim-supported">網站支援語系清單 (以逗號分隔，例如: zh-TW, en-US, ja-JP, zh-CN):</label>
+            <input type="text" id="sim-supported" class="form-input" value="zh-TW, en-US, ja-JP, zh-CN, ko-KR">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="sim-default">預設退回語系 (Default Fallback Language):</label>
+            <input type="text" id="sim-default" class="form-input" value="en-US">
+          </div>
+          <div class="button-group">
+            <button id="btn-run-sim-client" class="btn btn-primary">
+              ⚡ 用戶端快速模擬 (Client RFC 4647)
+            </button>
+            <button id="btn-run-sim-server" class="btn btn-secondary">
+              📡 後端 API 協商 (/api/negotiate)
+            </button>
+          </div>
+        </div>
+
+        <!-- Simulator Result -->
+        <div id="sim-result-box" class="result-box" style="display: none;">
+          <h3 class="result-title">🎉 最終匹配結果：<span id="sim-matched-lang" style="font-size: 18px; color: #fff;">--</span></h3>
+          <p style="font-size: 13px; color: var(--text-secondary);">
+            採用演算法：<strong id="sim-algo-name" class="tag-badge cyan">--</strong>
+          </p>
+
+          <div class="step-timeline" id="sim-steps-timeline">
+            <!-- Dynamic Steps -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: Events & Dynamic Testing -->
+    <section id="tab-events" class="tab-panel">
+      <div class="card" style="margin-bottom: 24px;">
+        <h2 class="card-title" style="font-size: 18px; margin-bottom: 8px;">⚡ 動態語系切換與事件監聽</h2>
+        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">
+          監聽瀏覽器 <code class="tag-badge">window.addEventListener('languagechange')</code> 事件，並測試動態切換語系時頁面能否即時反應：
+        </p>
+
+        <div class="button-group" style="margin-bottom: 16px;">
+          <button id="btn-dispatch-event" class="btn btn-primary">
+            🔔 觸發模擬 languagechange 事件
+          </button>
+          <button id="btn-mock-japanese" class="btn btn-secondary">
+            🇯🇵 模擬切換為 ja-JP
+          </button>
+          <button id="btn-mock-english" class="btn btn-secondary">
+            🇺🇸 模擬切換為 en-US
+          </button>
+          <button id="btn-clear-log" class="btn btn-secondary">
+            🧹 清空事件日誌
+          </button>
+        </div>
+
+        <h3 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">即時事件日誌 (Event Log Stream):</h3>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">
+            <span class="time">[00:00:00]</span> 監聽器已就緒，等待 languagechange 事件...
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: Connection Guide -->
+    <section id="tab-guide" class="tab-panel">
+      <div class="card" style="margin-bottom: 24px;">
+        <h2 class="card-title" style="font-size: 18px; margin-bottom: 8px;">📲 雙平台與實機連線測試指南</h2>
+        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 20px;">
+          請確保您的 iPhone、Android 手機與開發電腦連線至相同的 Wi-Fi 區域網路：
+        </p>
+
+        <div class="qr-container">
+          <div class="qr-wrapper" id="qr-code-box">
+            <!-- QR Code generated by JS -->
+          </div>
+          <div class="qr-url" id="qr-target-url">http://127.0.0.1:3000</div>
+          <button id="btn-copy-url" class="btn btn-secondary">
+            📋 複製連線網址
+          </button>
+        </div>
+
+        <div class="grid-2" style="margin-top: 24px;">
+          <div class="card" style="background: var(--bg-secondary);">
+            <h3 class="card-title">🍏 iOS 測試指南</h3>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
+              <strong>1. Mobile Safari</strong>：直接使用相機掃描上方 QR Code。<br>
+              <strong>2. WKWebView Shell</strong>：開啟 <code>navigator-language/IOS/NavigatorLanguageDemo.xcodeproj</code> 並執行於模擬器或實機。<br>
+              <strong>3. 切換 App 語系</strong>：進入 iOS「設定 > NavigatorLanguageDemo > 偏好語言」切換語系，觀察 WebView 與 NativeBridge 數值變化。
+            </p>
+          </div>
+
+          <div class="card" style="background: var(--bg-secondary);">
+            <h3 class="card-title">🤖 Android 測試指南</h3>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
+              <strong>1. Chrome for Android</strong>：掃描上方 QR Code。<br>
+              <strong>2. Android WebView Shell</strong>：使用 Android Studio 打開 <code>navigator-language/Android</code> 目錄並執行。<br>
+              <strong>3. 系統語系排序</strong>：進入 Android「設定 > 系統 > 語言與輸入 > 語言」，拖曳排序偏好語言清單。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Mobile Web Lab 🧪 • Navigator Language Cross-Platform Benchmark Suite</p>
+    </footer>
+
+  </div>
+
+  <script src="qrcode.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
