@@ -1,0 +1,1124 @@
+/* ==========================================================================
+   iOS Safe Area Inset 核心測試樣式表
+   ========================================================================== */
+
+:root {
+  /* 定義 Safe Area CSS 變數 (包含 constant 與 env 雙重回退) */
+  --safe-area-inset-top: constant(safe-area-inset-top);
+  --safe-area-inset-top: env(safe-area-inset-top);
+  --safe-area-inset-right: constant(safe-area-inset-right);
+  --safe-area-inset-right: env(safe-area-inset-right);
+  --safe-area-inset-bottom: constant(safe-area-inset-bottom);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom);
+  --safe-area-inset-left: constant(safe-area-inset-left);
+  --safe-area-inset-left: env(safe-area-inset-left);
+
+  --sat: var(--safe-area-inset-top, 0px);
+  --sar: var(--safe-area-inset-right, 0px);
+  --sab: var(--safe-area-inset-bottom, 0px);
+  --sal: var(--safe-area-inset-left, 0px);
+
+  /* 主題色盤 (iOS 深色風格) */
+  --bg-primary: #0a0e17;
+  --bg-secondary: #131b2e;
+  --bg-card: rgba(26, 38, 64, 0.7);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --accent-blue: #007aff;
+  --accent-cyan: #00f2fe;
+  --accent-purple: #af52de;
+  --accent-green: #34c759;
+  --accent-orange: #ff9500;
+  --accent-red: #ff3b30;
+
+  --header-height: 54px;
+  --tabbar-height: 52px;
+  --nav-tabs-height: 48px;
+}
+
+/* 關閉 Safe Area 模式 (用於比對崩潰排版) */
+body.safe-area-disabled {
+  --sat: 0px !important;
+  --sar: 0px !important;
+  --sab: 0px !important;
+  --sal: 0px !important;
+}
+
+/* 模擬器模式 Override */
+body.sim-iphone-island {
+  --sat: 59px !important;
+  --sar: 0px !important;
+  --sab: 34px !important;
+  --sal: 0px !important;
+}
+
+body.sim-iphone-notch {
+  --sat: 47px !important;
+  --sar: 0px !important;
+  --sab: 34px !important;
+  --sal: 0px !important;
+}
+
+body.sim-ipad-pro {
+  --sat: 24px !important;
+  --sar: 0px !important;
+  --sab: 20px !important;
+  --sal: 0px !important;
+}
+
+body.sim-landscape-notch {
+  --sat: 0px !important;
+  --sar: 47px !important;
+  --sab: 21px !important;
+  --sal: 47px !important;
+}
+
+/* 重置與基本設定 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   隱藏探測尺規 (JS 用於量測 px 數值)
+   ========================================================================== */
+.safe-area-probe {
+  position: fixed;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -9999;
+}
+
+.probe-top {
+  height: env(safe-area-inset-top, 0px);
+  width: 1px;
+}
+.probe-right {
+  width: env(safe-area-inset-right, 0px);
+  height: 1px;
+}
+.probe-bottom {
+  height: env(safe-area-inset-bottom, 0px);
+  width: 1px;
+}
+.probe-left {
+  width: env(safe-area-inset-left, 0px);
+  height: 1px;
+}
+
+/* ==========================================================================
+   可視化彩色邊界尺標覆蓋層
+   ========================================================================== */
+.edge-overlays {
+  display: none;
+  pointer-events: none;
+  z-index: 9990;
+}
+
+.edge-overlays.active {
+  display: block;
+}
+
+.edge-overlay {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, Menlo, monospace;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.edge-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--sat);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 59, 48, 0.7),
+    rgba(255, 59, 48, 0.7) 10px,
+    rgba(255, 69, 58, 0.4) 10px,
+    rgba(255, 69, 58, 0.4) 20px
+  );
+  border-bottom: 2px solid #ff3b30;
+}
+
+.edge-bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--sab);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(52, 199, 89, 0.7),
+    rgba(52, 199, 89, 0.7) 10px,
+    rgba(48, 209, 88, 0.4) 10px,
+    rgba(48, 209, 88, 0.4) 20px
+  );
+  border-top: 2px solid #34c759;
+}
+
+.edge-left {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--sal);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 149, 0, 0.7),
+    rgba(255, 149, 0, 0.7) 10px,
+    rgba(255, 159, 10, 0.4) 10px,
+    rgba(255, 159, 10, 0.4) 20px
+  );
+  border-right: 2px solid #ff9500;
+}
+
+.edge-right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--sar);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(175, 82, 222, 0.7),
+    rgba(175, 82, 222, 0.7) 10px,
+    rgba(191, 90, 242, 0.4) 10px,
+    rgba(191, 90, 242, 0.4) 20px
+  );
+  border-left: 2px solid #af52de;
+}
+
+.edge-label {
+  background: rgba(0, 0, 0, 0.75);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ==========================================================================
+   主容器與固定頂部導航
+   ========================================================================== */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* 左右兩側邊界避讓 */
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+}
+
+/* 頂部導航列 (使用 env(safe-area-inset-top) 避讓頂部動態島/瀏海) */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-color);
+  /* 關鍵：使用 Safe Area Top */
+  padding-top: var(--sat);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-height);
+  padding: 0 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.badge-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 122, 255, 0.15);
+  border: 1px solid rgba(0, 122, 255, 0.4);
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+}
+
+.badge-button .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+/* ==========================================================================
+   分頁切換導航
+   ========================================================================== */
+.nav-tabs-wrapper {
+  position: sticky;
+  top: calc(var(--sat) + var(--header-height));
+  z-index: 90;
+  background: rgba(19, 27, 46, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nav-tabs {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 12px;
+  gap: 8px;
+}
+
+.nav-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-tab {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-tab.active {
+  background: var(--accent-blue);
+  color: #ffffff;
+  border-color: var(--accent-blue);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.35);
+}
+
+/* ==========================================================================
+   主要內容區
+   ========================================================================== */
+.main-content {
+  flex: 1;
+  padding: 16px 16px calc(var(--tabbar-height) + var(--sab) + 30px);
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.tab-panel {
+  display: none;
+  animation: fadeIn 0.25s ease;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================================================
+   卡片風格
+   ========================================================================== */
+.card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.card-header h2 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.live-badge {
+  background: rgba(52, 199, 89, 0.2);
+  color: #34c759;
+  border: 1px solid rgba(52, 199, 89, 0.4);
+}
+
+.desc-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+/* ==========================================================================
+   Safe Area 實時十字儀表板
+   ========================================================================== */
+.inset-crosshair-container {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.inset-grid {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 12px;
+  width: 100%;
+  max-width: 450px;
+}
+
+.inset-cell {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.top-cell {
+  border-top: 3px solid #ff3b30;
+}
+.bottom-cell {
+  border-bottom: 3px solid #34c759;
+}
+.left-cell {
+  border-left: 3px solid #ff9500;
+}
+.right-cell {
+  border-right: 3px solid #af52de;
+}
+
+.inset-mid-row {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.center-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 122, 255, 0.1);
+  border: 1px dashed rgba(0, 122, 255, 0.4);
+  padding: 16px 8px;
+}
+
+.device-icon-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#screen-orientation-icon {
+  font-size: 28px;
+}
+
+#screen-orientation-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metric-value {
+  font-size: 26px;
+  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #ffffff;
+  margin: 4px 0;
+}
+
+.metric-value small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.metric-code {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+/* ==========================================================================
+   互動控制元件
+   ========================================================================== */
+.control-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.control-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn-primary {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.btn-outline {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+}
+
+.btn-accent {
+  background: rgba(0, 242, 254, 0.15);
+  border-color: rgba(0, 242, 254, 0.4);
+  color: #00f2fe;
+}
+
+.btn-warning {
+  background: rgba(255, 149, 0, 0.15);
+  border-color: rgba(255, 149, 0, 0.4);
+  color: #ff9500;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.select-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+/* ==========================================================================
+   資訊表格
+   ========================================================================== */
+.info-table-container {
+  overflow-x: auto;
+}
+
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.info-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.info-table td:first-child {
+  color: var(--text-secondary);
+  font-weight: 500;
+  width: 40%;
+}
+
+.info-table td:last-child {
+  color: var(--text-primary);
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.text-mono {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.small-text {
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ==========================================================================
+   場景 1: App Shell Demo
+   ========================================================================== */
+.demo-box {
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: #090d16;
+  overflow: hidden;
+}
+
+.demo-app-shell {
+  height: 380px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.demo-header {
+  background: rgba(0, 122, 255, 0.25);
+  border-bottom: 1px solid rgba(0, 122, 255, 0.4);
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+  color: #38bdf8;
+}
+
+.demo-scrollable-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.demo-scroll-notice {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.demo-list-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.demo-list-item strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: #ffffff;
+}
+
+.demo-list-item p {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.demo-footer {
+  background: rgba(52, 199, 89, 0.25);
+  border-top: 1px solid rgba(52, 199, 89, 0.4);
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+  color: #34c759;
+}
+
+/* ==========================================================================
+   場景 2: 浮動元件 Demo
+   ========================================================================== */
+.floating-demo-playground {
+  min-height: 180px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.button-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+/* 全域懸浮 FAB 按鈕 (右下角) */
+.floating-fab {
+  position: fixed;
+  /* 關鍵：疊加底部 TabBar 高度與 Safe Area Bottom */
+  right: calc(16px + var(--sar));
+  bottom: calc(var(--tabbar-height) + var(--sab) + 16px);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #007aff, #00c6ff);
+  border: none;
+  color: white;
+  font-size: 28px;
+  font-weight: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(0, 122, 255, 0.4);
+  cursor: pointer;
+  z-index: 1000;
+  transition:
+    transform 0.2s ease,
+    bottom 0.2s ease,
+    right 0.2s ease;
+}
+
+.floating-fab:active {
+  transform: scale(0.92);
+}
+
+/* Action Sheet 抽屜 */
+.actionsheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9995;
+  display: none;
+  align-items: flex-end;
+}
+
+.actionsheet-backdrop.active {
+  display: flex;
+}
+
+.actionsheet-panel {
+  width: 100%;
+  background: #1e293b;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 16px 20px calc(var(--sab) + 20px);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.actionsheet-handle {
+  width: 40px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.actionsheet-panel h3 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+
+.actionsheet-panel p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* Toast 通知 */
+.toast-notification {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  bottom: calc(var(--tabbar-height) + var(--sab) + 20px);
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(52, 199, 89, 0.5);
+  color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 9998;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.toast-notification.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* ==========================================================================
+   場景 3: 橫向模式 Demo
+   ========================================================================== */
+.landscape-demo-container {
+  display: flex;
+  min-height: 200px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  background: #090d16;
+}
+
+.landscape-sidebar {
+  width: 140px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.landscape-sidebar-left {
+  border-right: 1px solid var(--border-color);
+}
+
+.landscape-sidebar-right {
+  border-left: 1px solid var(--border-color);
+}
+
+.sidebar-box {
+  text-align: center;
+  font-size: 12px;
+}
+
+.sidebar-box strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sidebar-box code {
+  font-size: 10px;
+  color: #38bdf8;
+}
+
+.landscape-center-content {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.tag-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.tag {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+/* ==========================================================================
+   場景 4: 表單與鍵盤 Demo
+   ========================================================================== */
+.form-demo-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.input-control {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 15px;
+  outline: none;
+}
+
+.input-control:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.3);
+}
+
+.chat-input-bar {
+  display: flex;
+  gap: 8px;
+  background: rgba(30, 41, 59, 0.8);
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+/* ==========================================================================
+   場景 5: 程式碼 Snippet Box
+   ========================================================================== */
+.code-snippet-box {
+  margin-bottom: 18px;
+}
+
+.code-snippet-box h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #38bdf8;
+}
+
+.code-snippet-box pre {
+  background: #090d16;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px;
+  overflow-x: auto;
+}
+
+.code-snippet-box code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: #e2e8f0;
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   場景 6: 手機連線 QR Code
+   ========================================================================== */
+.connect-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 0;
+}
+
+.qrcode-container {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 200px;
+  min-height: 200px;
+}
+
+.qr-loading {
+  color: #333333;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.connect-urls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.url-card {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--border-color);
+  padding: 12px 16px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.url-card-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.url-card-link {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  color: #38bdf8;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.tip-box {
+  background: rgba(0, 122, 255, 0.08);
+  border: 1px solid rgba(0, 122, 255, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.tip-box h4 {
+  font-size: 14px;
+  color: #38bdf8;
+  margin-bottom: 8px;
+}
+
+.tip-box ol {
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   全域固定底部 TabBar (使用 env(safe-area-inset-bottom))
+   ========================================================================== */
+.app-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border-color);
+  z-index: 100;
+  /* 關鍵：使用 Safe Area Bottom 邊距 */
+  padding-bottom: var(--sab);
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+  transition: padding 0.2s ease;
+}
+
+.tabbar-items {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: var(--tabbar-height);
+}
+
+.tabbar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 16px;
+  transition: color 0.2s ease;
+}
+
+.tabbar-item.active {
+  color: var(--accent-blue);
+}
+
+.tabbar-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.tabbar-label {
+  font-size: 10px;
+  font-weight: 500;
+}

@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8" />
+    <!-- 關鍵：viewport-fit=cover 是啟動 iOS Safe Area Inset 的必備設定 -->
+    <meta
+      id="viewport-meta"
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="theme-color" content="#090d16" />
+    <title>iOS Safe Area Inset 測試實驗室</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="safe-area-enabled">
+    <!-- 隱藏的 Safe Area 測量尺 (用於精確換算 px) -->
+    <div id="safe-area-probe" class="safe-area-probe" aria-hidden="true">
+      <div id="probe-top" class="probe probe-top"></div>
+      <div id="probe-right" class="probe probe-right"></div>
+      <div id="probe-bottom" class="probe probe-bottom"></div>
+      <div id="probe-left" class="probe probe-left"></div>
+    </div>
+
+    <!-- 邊緣可視化高對比覆蓋層 (可開關) -->
+    <div id="edge-overlays" class="edge-overlays active">
+      <div class="edge-overlay edge-top">
+        <span class="edge-label"
+          >TOP: <span id="overlay-top-val">0px</span></span
+        >
+      </div>
+      <div class="edge-overlay edge-right">
+        <span class="edge-label"
+          >RIGHT: <span id="overlay-right-val">0px</span></span
+        >
+      </div>
+      <div class="edge-overlay edge-bottom">
+        <span class="edge-label"
+          >BOTTOM: <span id="overlay-bottom-val">0px</span> (Home Indicator
+          區域)</span
+        >
+      </div>
+      <div class="edge-overlay edge-left">
+        <span class="edge-label"
+          >LEFT: <span id="overlay-left-val">0px</span></span
+        >
+      </div>
+    </div>
+
+    <!-- 主應用容器 -->
+    <div class="app-container">
+      <!-- 頂部固定導航列 (使用 env(safe-area-inset-top)) -->
+      <header class="app-header">
+        <div class="header-content">
+          <div class="brand">
+            <span class="brand-icon"></span>
+            <div class="brand-text">
+              <h1 class="title">iOS Safe Area 實驗室</h1>
+              <p class="subtitle">Real-time Inset Diagnostics & UI Suite</p>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button
+              id="btn-toggle-fit"
+              class="badge-button fit-cover"
+              title="切換 viewport-fit"
+            >
+              <span class="dot"></span>
+              <span id="label-viewport-fit">viewport-fit=cover</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- 頂部快速切換分頁導航 -->
+      <nav class="nav-tabs-wrapper">
+        <div class="nav-tabs" role="tablist">
+          <button class="nav-tab active" data-tab="dashboard" role="tab">
+            📊 即時儀表板
+          </button>
+          <button class="nav-tab" data-tab="appshell" role="tab">
+            📱 App Shell
+          </button>
+          <button class="nav-tab" data-tab="floating" role="tab">
+            🎯 邊緣浮動元素
+          </button>
+          <button class="nav-tab" data-tab="landscape" role="tab">
+            🔄 橫向適配
+          </button>
+          <button class="nav-tab" data-tab="keyboard" role="tab">
+            ⌨️ 鍵盤與表單
+          </button>
+          <button class="nav-tab" data-tab="code" role="tab">
+            💻 CSS 程式碼
+          </button>
+          <button class="nav-tab" data-tab="connect" role="tab">
+            📲 手機連線
+          </button>
+        </div>
+      </nav>
+
+      <!-- 主要內容區域 -->
+      <main class="main-content">
+        <!-- ==================== TAB 1: 儀表板 ==================== -->
+        <section id="tab-dashboard" class="tab-panel active">
+          <!-- 4 軸 Inset 實時數值卡片 -->
+          <div class="card inset-dashboard-card">
+            <div class="card-header">
+              <h2>即時 Safe Area Inset 數值</h2>
+              <span class="badge live-badge">LIVE MONITOR</span>
+            </div>
+
+            <div class="inset-crosshair-container">
+              <!-- 視覺十字圖形 -->
+              <div class="inset-grid">
+                <div class="inset-cell top-cell">
+                  <div class="metric-label">TOP (頂部)</div>
+                  <div class="metric-value" id="val-top">
+                    0<small>px</small>
+                  </div>
+                  <div class="metric-code">env(safe-area-inset-top)</div>
+                </div>
+
+                <div class="inset-mid-row">
+                  <div class="inset-cell left-cell">
+                    <div class="metric-label">LEFT (左側)</div>
+                    <div class="metric-value" id="val-left">
+                      0<small>px</small>
+                    </div>
+                    <div class="metric-code">env(safe-area-inset-left)</div>
+                  </div>
+
+                  <div class="inset-cell center-cell">
+                    <div class="device-icon-box">
+                      <span id="screen-orientation-icon">📱</span>
+                      <span id="screen-orientation-text">Portrait</span>
+                    </div>
+                  </div>
+
+                  <div class="inset-cell right-cell">
+                    <div class="metric-label">RIGHT (右側)</div>
+                    <div class="metric-value" id="val-right">
+                      0<small>px</small>
+                    </div>
+                    <div class="metric-code">env(safe-area-inset-right)</div>
+                  </div>
+                </div>
+
+                <div class="inset-cell bottom-cell">
+                  <div class="metric-label">BOTTOM (底部)</div>
+                  <div class="metric-value" id="val-bottom">
+                    0<small>px</small>
+                  </div>
+                  <div class="metric-code">env(safe-area-inset-bottom)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 互動控制面板 -->
+          <div class="card">
+            <div class="card-header">
+              <h2>互動控制與模擬設定</h2>
+            </div>
+            <div class="control-grid">
+              <div class="control-item">
+                <label class="control-label">Viewport Fit 設定：</label>
+                <div class="btn-group">
+                  <button id="btn-fit-cover" class="btn btn-sm btn-primary">
+                    cover (啟用避讓)
+                  </button>
+                  <button id="btn-fit-contain" class="btn btn-sm btn-outline">
+                    contain (白邊)
+                  </button>
+                  <button id="btn-fit-auto" class="btn btn-sm btn-outline">
+                    auto (預設)
+                  </button>
+                </div>
+              </div>
+
+              <div class="control-item">
+                <label class="control-label">邊界彩色尺標遮罩：</label>
+                <button id="btn-toggle-overlay" class="btn btn-sm btn-accent">
+                  切換顯示尺標 (ON)
+                </button>
+              </div>
+
+              <div class="control-item">
+                <label class="control-label">桌機/無瀏海設備模擬器：</label>
+                <select id="select-simulator" class="select-input">
+                  <option value="none">關閉模擬 (使用實際環境)</option>
+                  <option value="iphone-island">
+                    模擬 iPhone 15/16 Pro (動態島: Top 59px / Bottom 34px)
+                  </option>
+                  <option value="iphone-notch">
+                    模擬 iPhone 13/14 (瀏海: Top 47px / Bottom 34px)
+                  </option>
+                  <option value="ipad-pro">
+                    模擬 iPad Pro (Home Bar: Top 24px / Bottom 20px)
+                  </option>
+                  <option value="landscape-notch">
+                    模擬 橫向雙側避讓 (Left 47px / Right 47px / Bottom 21px)
+                  </option>
+                </select>
+              </div>
+
+              <div class="control-item">
+                <label class="control-label">測試 Safe Area 開關比對：</label>
+                <button id="btn-toggle-safe-css" class="btn btn-sm btn-warning">
+                  切換 CSS Safe Area (已啟用)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 裝置環境與 Viewport 資訊 -->
+          <div class="card">
+            <div class="card-header">
+              <h2>裝置與 Viewport 資訊</h2>
+            </div>
+            <div class="info-table-container">
+              <table class="info-table">
+                <tbody>
+                  <tr>
+                    <td>運行環境</td>
+                    <td id="info-env">檢測中...</td>
+                  </tr>
+                  <tr>
+                    <td>螢幕解析度 (Screen)</td>
+                    <td id="info-screen">-</td>
+                  </tr>
+                  <tr>
+                    <td>可視視窗 (Inner Window)</td>
+                    <td id="info-inner">-</td>
+                  </tr>
+                  <tr>
+                    <td>Visual Viewport</td>
+                    <td id="info-visual-vp">-</td>
+                  </tr>
+                  <tr>
+                    <td>裝置像素比 (Device Pixel Ratio)</td>
+                    <td id="info-dpr">-</td>
+                  </tr>
+                  <tr>
+                    <td>全螢幕 PWA 狀態 (Standalone)</td>
+                    <td id="info-standalone">-</td>
+                  </tr>
+                  <tr>
+                    <td>User Agent</td>
+                    <td id="info-ua" class="text-mono small-text">-</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== TAB 2: APP SHELL 佈局 ==================== -->
+        <section id="tab-appshell" class="tab-panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>App Shell 佈局測試 (Header + Content + Footer)</h2>
+            </div>
+            <p class="desc-text">
+              標準 iOS
+              應用程式外觀。在全螢幕下，頁面必須延伸到最頂端及最底端，但內容與點擊元件必須透過
+              <code>env(safe-area-inset-top)</code> 與
+              <code>env(safe-area-inset-bottom)</code> 避開遮擋。
+            </p>
+
+            <div class="demo-box demo-app-shell">
+              <div class="demo-header">
+                <span>固定頂部導航列 (pt: safe-area-top)</span>
+              </div>
+              <div class="demo-scrollable-content">
+                <div class="demo-scroll-notice">
+                  ⬇️ 滾動此區塊以測試內容在透光導航列與底部 TabBar 下的穿透效果
+                </div>
+                <div class="demo-list-item" v-for="i in 15">
+                  <strong>列表項目 #1</strong>
+                  <p>文字內容與按鈕在滾動時滑入安全邊距外。</p>
+                </div>
+                <div class="demo-list-item">
+                  <strong>列表項目 #2</strong>
+                  <p>
+                    若未設置 Safe Area Inset，頂部標題將會和動態島/時間重疊。
+                  </p>
+                </div>
+                <div class="demo-list-item">
+                  <strong>列表項目 #3</strong>
+                  <p>底部按鈕將會被黑色的 Home Indicator 橫條擋住無法點擊。</p>
+                </div>
+                <div class="demo-list-item">
+                  <strong>列表項目 #4</strong>
+                  <p>測試項目內容 4</p>
+                </div>
+                <div class="demo-list-item">
+                  <strong>列表項目 #5</strong>
+                  <p>測試項目內容 5</p>
+                </div>
+                <div class="demo-list-item">
+                  <strong>列表項目 #6</strong>
+                  <p>測試項目內容 6</p>
+                </div>
+                <div class="demo-list-item">
+                  <strong>列表項目 #7</strong>
+                  <p>測試項目內容 7 - 底部邊距測試</p>
+                </div>
+              </div>
+              <div class="demo-footer">
+                <span>固定底部分頁列 (pb: safe-area-bottom)</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== TAB 3: 邊緣浮動元素 ==================== -->
+        <section id="tab-floating" class="tab-panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>邊緣浮動按鈕與 Action Sheet 測試</h2>
+            </div>
+            <p class="desc-text">
+              浮動按鈕 (FAB) 通常使用
+              <code>bottom: calc(16px + env(safe-area-inset-bottom))</code> 與
+              <code>right: calc(16px + env(safe-area-inset-right))</code>
+              來確保不貼在 Home Bar 或螢幕邊角。
+            </p>
+
+            <div class="demo-box floating-demo-playground">
+              <div class="floating-guide">
+                <p>📍 觀察畫面四個角落與底部的浮動元件位置：</p>
+                <div class="button-row">
+                  <button id="btn-trigger-toast" class="btn btn-sm btn-primary">
+                    彈出底部 Toast 通知
+                  </button>
+                  <button
+                    id="btn-trigger-actionsheet"
+                    class="btn btn-sm btn-accent"
+                  >
+                    打開底部 Action Sheet
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== TAB 4: 橫向模式適配 ==================== -->
+        <section id="tab-landscape" class="tab-panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>橫向模式 (Landscape) 兩側避讓</h2>
+            </div>
+            <p class="desc-text">
+              當 iPhone
+              橫向旋轉時，動態島或瀏海會出現在<strong>左側或右側</strong>，此時
+              <code>safe-area-inset-left</code> 或
+              <code>safe-area-inset-right</code> 通常會達到 47px~59px，而底部
+              Home Bar 邊距則縮小至 21px。
+            </p>
+
+            <div class="landscape-demo-container">
+              <div class="landscape-sidebar landscape-sidebar-left">
+                <div class="sidebar-box">
+                  <strong>左側邊欄</strong>
+                  <code>pl: env(safe-area-inset-left)</code>
+                </div>
+              </div>
+              <div class="landscape-center-content">
+                <h3>橫向內容主區塊</h3>
+                <p>請將手機旋轉 90 度或 270 度體驗左右瀏海的交替避讓。</p>
+                <div class="tag-row">
+                  <span class="tag"
+                    >Left: <b id="landscape-left-val">0px</b></span
+                  >
+                  <span class="tag"
+                    >Right: <b id="landscape-right-val">0px</b></span
+                  >
+                </div>
+              </div>
+              <div class="landscape-sidebar landscape-sidebar-right">
+                <div class="sidebar-box">
+                  <strong>右側邊欄</strong>
+                  <code>pr: env(safe-area-inset-right)</code>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== TAB 5: 鍵盤與輸入框 ==================== -->
+        <section id="tab-keyboard" class="tab-panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>iOS 虛擬鍵盤與 Safe Area 互動測試</h2>
+            </div>
+            <p class="desc-text">
+              點擊以下輸入框喚醒 iOS 虛擬鍵盤。在 iOS Safari
+              中，當鍵盤彈出時，<code>visualViewport</code> 會縮小，且
+              <code>env(safe-area-inset-bottom)</code> 可能會動態變為 0px。
+            </p>
+
+            <div class="form-demo-container">
+              <div class="form-group">
+                <label>測試單行文字輸入：</label>
+                <input
+                  type="text"
+                  class="input-control"
+                  placeholder="點擊此處喚醒鍵盤..."
+                />
+              </div>
+              <div class="form-group">
+                <label>測試密碼輸入：</label>
+                <input
+                  type="password"
+                  class="input-control"
+                  placeholder="輸入密碼..."
+                />
+              </div>
+              <div class="form-group">
+                <label>固定貼底輸入列模擬 (Chat Bar)：</label>
+                <div class="chat-input-bar">
+                  <input
+                    type="text"
+                    class="input-control"
+                    placeholder="傳送訊息..."
+                  />
+                  <button class="btn btn-primary btn-sm">傳送</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== TAB 6: CSS 範例與規範 ==================== -->
+        <section id="tab-code" class="tab-panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>標準 CSS 實作寫法與相容性</h2>
+            </div>
+            <div class="code-snippet-box">
+              <h3>1. 必須的 HTML Meta 標籤</h3>
+              <pre><code>&lt;meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"&gt;</code></pre>
+            </div>
+
+            <div class="code-snippet-box">
+              <h3>2. 包含 iOS 11 (constant) 相容性的 CSS 寫法</h3>
+              <pre><code>/* 頂部避讓 (Navigation Bar) */
+.header {
+  padding-top: constant(safe-area-inset-top); /* iOS 11.0 - 11.2 */
+  padding-top: env(safe-area-inset-top);      /* iOS 11.2+ */
+}
+
+/* 底部避讓 (Tab Bar / Footer) */
+.footer {
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 左右側避讓 (橫向 Landscape 模式) */
+.body-container {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}</code></pre>
+            </div>
+
+            <div class="code-snippet-box">
+              <h3>3. 浮動按鈕 (FAB) 的 calc() 組合技巧</h3>
+              <pre><code>.floating-action-button {
+  position: fixed;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+}</code></pre>
+            </div>
+
+            <div class="code-snippet-box">
+              <h3>4. Tailwind CSS 寫法 (Arbitrary Values)</h3>
+              <pre><code>&lt;!-- 頂部與底部避讓 --&gt;
+&lt;header class="pt-[env(safe-area-inset-top)]"&gt;...&lt;/header&gt;
+&lt;footer class="pb-[env(safe-area-inset-bottom)]"&gt;...&lt;/footer&gt;
+
+&lt;!-- 浮動按鈕 --&gt;
+&lt;button class="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))]"&gt;+&lt;/button&gt;</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== TAB 7: 手機連線 QR CODE ==================== -->
+        <section id="tab-connect" class="tab-panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>📱 iPhone / iPad 實機連線指引</h2>
+            </div>
+            <p class="desc-text">
+              請確認您的 iPhone / iPad 與此電腦連線至<strong
+                >同一個 Wi-Fi 區域網路</strong
+              >，使用內建「相機」掃描下方 QR Code，或在 Safari 輸入網址：
+            </p>
+
+            <div class="connect-box">
+              <div id="qrcode-container" class="qrcode-container">
+                <!-- 動態生成 QR Code SVG -->
+                <div class="qr-loading">產生 QR Code 中...</div>
+              </div>
+              <div class="connect-urls" id="connect-urls-list">
+                <!-- 動態填入伺服器 IP 列表 -->
+              </div>
+            </div>
+
+            <div class="tip-box">
+              <h4>💡 測試小技巧：</h4>
+              <ol>
+                <li>
+                  在 Safari 開啟後，點擊下方「分享」按鈕 ➡️ 選擇<strong
+                    >「加入主畫面 (Add to Home Screen)」</strong
+                  >。
+                </li>
+                <li>
+                  從主畫面點開 App 即可體驗
+                  <strong>全螢幕 PWA 無瀏覽器外框</strong> 的極限 Safe Area
+                  邊距！
+                </li>
+              </ol>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- 範例：真實固定底部 TabBar (以 env(safe-area-inset-bottom) 避讓) -->
+      <footer class="app-tabbar">
+        <div class="tabbar-items">
+          <div class="tabbar-item active">
+            <span class="tabbar-icon">🏠</span>
+            <span class="tabbar-label">測試首頁</span>
+          </div>
+          <div class="tabbar-item">
+            <span class="tabbar-icon">🧭</span>
+            <span class="tabbar-label">探索</span>
+          </div>
+          <div class="tabbar-item">
+            <span class="tabbar-icon">🔔</span>
+            <span class="tabbar-label">通知</span>
+          </div>
+          <div class="tabbar-item">
+            <span class="tabbar-icon">⚙️</span>
+            <span class="tabbar-label">設定</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <!-- 浮動 FAB 按鈕 (右下角) -->
+    <button id="demo-fab" class="floating-fab" title="測試 FAB 點擊">
+      <span>+</span>
+    </button>
+
+    <!-- 底部 Action Sheet 範例 -->
+    <div id="demo-actionsheet-backdrop" class="actionsheet-backdrop">
+      <div class="actionsheet-panel">
+        <div class="actionsheet-handle"></div>
+        <h3>底部 Action Sheet 抽屜</h3>
+        <p>
+          抽屜底部已自動套用
+          <code>padding-bottom: env(safe-area-inset-bottom)</code
+          >，保證文字與按鈕不會被底部 Home Bar 遮擋。
+        </p>
+        <button id="btn-close-actionsheet" class="btn btn-primary btn-block">
+          關閉抽屜
+        </button>
+      </div>
+    </div>
+
+    <!-- Toast 訊息元件 -->
+    <div id="demo-toast" class="toast-notification">
+      <span>✅ 底部 Toast：已正確避開 Home Bar 區域！</span>
+    </div>
+
+    <script src="qrcode.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

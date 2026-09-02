@@ -1,0 +1,19 @@
+{
+  "name": "ios-safe-area-inset-test",
+  "version": "1.0.0",
+  "description": "iOS Safe Area Inset Interactive Testing Environment",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "ios",
+    "safe-area",
+    "safe-area-inset",
+    "css",
+    "viewport-fit"
+  ],
+  "author": "",
+  "license": "MIT"
+}

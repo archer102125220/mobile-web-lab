@@ -1,16 +1,26 @@
+# ======= OS / Editor =======
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
 # ======= Android =======
 *.iml
 .gradle/
 local.properties
-.idea/
-.DS_Store
-build/
 captures/
 .externalNativeBuild/
 .cxx/
+**/Android/build/
+**/Android/app/build/
+Android/.gradle/
+Android/build/
+Android/app/build/
 
 # ======= iOS / Xcode =======
 build/
+DerivedData/
 *.pbxuser
 !default.pbxuser
 *.mode1v3
@@ -20,16 +30,21 @@ build/
 *.perspectivev3
 !default.perspectivev3
 xcuserdata/
+*.xcuserdatad/
 *.xccheckout
 *.moved-aside
-DerivedData/
 *.hmap
 *.ipa
 *.xcuserstate
+**/xcuserdata/
+**/project.xcworkspace/xcuserdata/
 
-# We usually keep project.xcworkspace but ignore user specific workspace data
-IOS/WebViewInterceptorDemo.xcodeproj/project.xcworkspace/xcuserdata/
-IOS/WebViewInterceptorDemo.xcodeproj/xcuserdata/
+# ======= Node.js / Web =======
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Mock Server Config
+# ======= Mock Server & Local Config =======
 env.properties
+*.local
