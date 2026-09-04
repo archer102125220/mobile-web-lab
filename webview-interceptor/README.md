@@ -3,30 +3,82 @@
 [English Version](README_en.md)
 
 這是一個雙平台 (Android / iOS) 的 WebView 跳轉攔截測試與展示專案。
-此專案旨在深度測試並驗證 WebView 在面對不同情境（如人為點擊、腳本跳轉、非同步任務、SPA 路由）時，原生端攔截器的極限與死角。
+此專案旨在深度測試並驗證 WebView 在面對不同情境（如人為點擊、腳本跳轉、非同步任務、SPA 路由、表單導航）時，原生端攔截器的極限與死角。
 
 本專案的建立，源於跨領域協作時常見的認知落差。許多在前端領域屬於基礎常識的 WebView 行為，往往難以單憑口頭解釋讓非前端領域的工程師信服。為避免技術討論淪為「那只是你的想像」這類主觀感受，本專案提供了一套具體的實驗基準 (Benchmark)，以最真實的雙平台運行結果，作為技術驗證的唯一依據。
+
+---
+
+## 📱 實測基準環境 (Benchmark Environment)
+* 🍏 **iOS**：iPhone Xs，系統版本 **iOS 18.7.10**
+* 🤖 **Android**：Samsung Galaxy Z Fold5，系統版本 **One UI 8.5 (Android 16)**
+
+---
 
 ## 專案結構
 * **`Android/`**：Android 版本，使用 Kotlin 與現代化 `WebViewClient` (處理當頁跳轉) 和 `WebChromeClient` (處理新視窗)。
 * **`IOS/`**：iOS 版本，使用 Swift 與 `WKWebView`、`WKNavigationDelegate` (處理當頁跳轉)、`WKUIDelegate` (處理新視窗)。
 
+---
+
 ## 測試情境涵蓋
 
 1. **基本跳轉攔截**：`<a href="...">`、`location.href`、`window.open`。
 2. **非同步腳本觸發 (Event Loop 測試)**：透過 `Promise.resolve().then` (微任務) 與 `setTimeout` (宏任務) 觸發的跳轉。
-3. **攔截死角 / 失效測試**：
-    * **SPA 路由切換 (`history.pushState`)**：雙平台皆攔截失效（無重新載入行為）。
+3. **攔截死角 / 失效與平台差異測試**：
+    * **SPA 路由切換 (`history.pushState`)**：雙平台皆攔截失效（純前端 URL 變更，無重新載入或導航行為）。
     * **表單跳轉 (`<form>`)**：
-      * **原頁跳轉 (`target="_self"`)**：表現如同一般 `location.href`，不受彈窗攔截器影響。但須注意 **POST 請求**在攔截時有雙平台原生缺陷（Android 原生無法攔截 POST 會直接穿透，iOS 雖能攔截但 Body 因 IPC 限制永遠為 nil）。
-      * **另開視窗 (`target="_blank"`)**：行為等同於 `window.open`，**完全受制於瀏覽器的 Popup Blocker**，無法繞過非同步或超時封殺。
-    * **非同步與延遲彈窗 (`fetch` / `setTimeout` + `window.open`)**：iOS WebKit 對非同步極度嚴格 (特別是 `fetch` 具有 0 秒寬限期，會立刻封殺)；Android Chromium 則受惠於 UAv2 機制，在 5 秒的寬限期內通常會放行。
+      * **原頁跳轉 (`target="_self"`)**：表現如同一般 `location.href`，不受彈窗攔截器影響。但須注意 **POST 請求**：Android 原生 `shouldOverrideUrlLoading` 依規範不攔截 POST（會直接於 WebView 內部載入穿透）；iOS `WKNavigationDelegate` 能攔截，但因跨行程 (IPC) 限制其 `httpBody` 永遠為 `nil`。
+      * **另開視窗 (`target="_blank"`)**：走 Web 表單導航生命週期。同步、微任務以及快速 Fetch 於雙平台均能放行；但宏任務延遲 1s 在 iOS 上會因手勢過期而封殺（Android 享 UAv2 5s 寬限期放行）；POST `_blank` 於 iOS `WKUIDelegate` 能成功攔截，Android 則因原生不回呼 POST 導致在臨時視窗中完全靜默。
+    * **非同步彈窗 (`fetch` / `setTimeout` + `window.open`)**：Android Chromium 受惠於 UAv2 機制，在 5 秒寬限期內放行；iOS 18.7.10 現代 WebKit 對快速完成的輕量 `fetch` 能保留手勢放行，但對 `setTimeout(1000)` 等 1 秒以上宏任務延遲則嚴格封殺。
 4. **伺服器端延遲跳轉 (Server-side Delayed 302 Redirect)**：
     * 測試直接使用 `a tag` 或 `window.open` 開啟新視窗 (`_blank`)，並指向一個在伺服器端故意延遲 2 秒（模擬非同步資料庫查詢）才回傳 HTTP 302 的 API。
     * **結果**：雙平台皆能正常運作並成功跳轉！這證實了只要將非同步等待的過程轉移至伺服器端，就能完美繞過 WebView 對 JS 非同步回呼 (async callback) 嚴格的彈窗安全封殺限制。
 5. **伺服器端中繼表單跳轉 (Server-side Form Bridge: GET & POST)**：
     * 測試以新開分頁 (`target="_blank"`) 開啟 Server 上的中繼頁面，中繼頁載入時直接於 `<script>` 內呼叫 API 取得目的地 URL 與參數，再透過 Web Form (GET / POST) 跳轉至目的地結果頁。
     * **結果**：開新分頁的動作在點擊當下即同步建立，抵達中繼頁後是在獨立頁面生命週期內執行同頁 Web Form 跳轉，能順利帶入參數並完成跳轉。
+
+---
+
+## 📊 雙平台全量實測對照矩陣 (Benchmark Matrix)
+
+| 測試分類 | 測試項目 (1 ~ 53) | Android 16 (Fold5) | iOS 18.7.10 (iPhone Xs) | 底層核心機制說明 |
+| :--- | :--- | :---: | :---: | :--- |
+| **🚀 進階實驗** | WebServer 302 重導向與中繼表單 (含 6s 延遲) | 🟢 攔截放行 | 🟢 攔截放行 | 伺服器端轉移等待，不受前端手勢限制 |
+| **🟢 雙平台皆成功** | 1. a tag 當頁跳轉 | 🟢 攔截成功 | 🟢 攔截成功 | 物理點擊當頁導航 |
+| | 2. a tag 另開分頁 (`target="_blank"`) | 🟢 攔截成功 | 🟢 攔截成功 | 物理點擊新視窗 |
+| | 3. 動態建立 a tag 並 click (同步) | 🟢 攔截成功 | 🟢 攔截成功 | 同步手勢繼承 |
+| | 4. `location.href` 當頁跳轉 | 🟢 攔截成功 | 🟢 攔截成功 | 當頁腳本導航 |
+| | 5. `window.open` 當頁 (`_self`) | 🟢 攔截成功 | 🟢 攔截成功 | 當頁腳本導航 |
+| | 6. `window.open` 另開分頁 (`_blank`) | 🟢 攔截成功 | 🟢 攔截成功 | 同步彈窗通行證有效 |
+| | 7. Microtask (Promise) -> `location.href` | 🟢 攔截成功 | 🟢 攔截成功 | 當頁跳轉無視窗限制 |
+| | 8. Macrotask (setTimeout 1s) -> `location.href`| 🟢 攔截成功 | 🟢 攔截成功 | 當頁跳轉無視窗限制 |
+| | 9. Fetch API -> `location.href` | 🟢 攔截成功 | 🟢 攔截成功 | 當頁跳轉無視窗限制 |
+| | 10. Fetch API -> `window.open` (`_self`) | 🟢 攔截成功 | 🟢 攔截成功 | 當頁跳轉無視窗限制 |
+| | 11. Fetch API -> `window.open` (`_blank`) | 🟢 攔截成功 | 🟢 攔截成功 | Android 5s 寬限期；iOS 18 快速 Fetch 手勢保留 |
+| | 12. Fetch API -> 動態 a tag (`_blank`) | 🟢 攔截成功 | 🟢 攔截成功 | 同 11 題機制 |
+| | 13. HTML 靜態表單 GET `_blank` (同步點擊) | 🟢 攔截成功 | 🟢 攔截成功 | 表單導航 + 同步手勢 |
+| | 14. JS 觸發靜態表單 GET `_blank` (同步) | 🟢 攔截成功 | 🟢 攔截成功 | 表單導航 + 同步手勢 |
+| | 15. JS 觸發靜態表單 GET `_blank` (Microtask) | 🟢 攔截成功 | 🟢 攔截成功 | 微任務手勢保留 |
+| | 16. JS 觸發靜態表單 GET `_blank` (Fetch API 後) | 🟢 攔截成功 | 🟢 攔截成功 | 快速 Fetch 表單導航放行 |
+| | 17. 動態建立表單 GET `_blank` (同步) | 🟢 攔截成功 | 🟢 攔截成功 | 動態 Form 同步手勢 |
+| | 18. 動態建立表單 GET `_blank` (Microtask) | 🟢 攔截成功 | 🟢 攔截成功 | 微任務手勢保留 |
+| | 19. 動態建立表單 GET `_blank` (Fetch API 後) | 🟢 攔截成功 | 🟢 攔截成功 | 快速 Fetch 表單導航放行 |
+| **🟡 平台差異與原生限制** | 20~30. Form POST 當頁跳轉 (含同步/微任務/1s/Fetch/6s/動態) | 🟡 直接穿透跳轉 | 🟢 攔截成功 (Body為nil) | Android 原生不攔截 POST；iOS WKNavigationDelegate 攔截但 Body 為 nil |
+| | 31. JS 觸發靜態表單 GET `_blank` (Macrotask 1s) | 🟢 攔截成功 | 🔴 靜默無反應 | Android 享 UAv2 5s 寬限；iOS 1s 宏任務手勢被沒收 |
+| | 32. 動態建立表單 GET `_blank` (Macrotask 1s) | 🟢 攔截成功 | 🔴 靜默無反應 | 同 31 題機制 |
+| | 33~39. Form POST `_blank` (同步/Micro/Fetch/動態) | 🔴 靜默無反應 | 🟢 攔截成功 (Body為nil) | Android `shouldOverrideUrlLoading` 永不回呼 POST；iOS WKUIDelegate 完整攔截 |
+| **🔴 雙平台皆失效** | 40. SPA 路由切換 (`history.pushState`) | 🔴 原生無通知 | 🔴 原生無通知 | 無頁面載入行為，雙端攔截器皆不觸發 |
+| | 41. 延遲 6 秒後 `window.open` (`_blank`) | 🔴 彈窗攔截封殺 | 🔴 彈窗攔截封殺 | 雙端皆超過手勢生命週期 (Android 5s / iOS 1s) |
+| | 42. 延遲 6 秒動態建立 a tag (`_blank`) | 🔴 靜默無反應 | 🔴 靜默無反應 | 雙端皆超過手勢生命週期 |
+| | 43. JS 觸發靜態表單 GET `_blank` (Macrotask 6s) | 🔴 靜默無反應 | 🔴 靜默無反應 | 6 秒超時雙端封殺 |
+| | 44. 動態建立表單 GET `_blank` (Macrotask 6s) | 🔴 靜默無反應 | 🔴 靜默無反應 | 6 秒超時雙端封殺 |
+| | 45. JS 觸發靜態表單 POST `_blank` (Macrotask 1s) | 🔴 靜默無反應 | 🔴 靜默無反應 | iOS 宏任務超時；Android 不支援 POST |
+| | 46. JS 觸發靜態表單 POST `_blank` (Macrotask 6s) | 🔴 靜默無反應 | 🔴 靜默無反應 | 雙端 6 秒超時 |
+| | 47. 動態建立表單 POST `_blank` (Macrotask 1s) | 🔴 靜默無反應 | 🔴 靜默無反應 | iOS 宏任務超時；Android 不支援 POST |
+| | 48. 動態建立表單 POST `_blank` (Macrotask 6s) | 🔴 靜默無反應 | 🔴 靜默無反應 | 雙端 6 秒超時 |
+| **🟣 JSBridge 原生通訊** | 49~53. JSBridge (同步/Micro/1s/6s/Fetch) | 🟣 100% 成功 | 🟣 100% 成功 | 原生 API 直接調用，完全免疫所有 Web 彈窗限制 |
+| **自訂攔截測試** | 自訂 Scheme (`myapp://`) & YouTube 外部攔截 | 🟢 攔截成功 | 🟢 攔截成功 | 原生 URL Scheme 與外部 App 叫起 |
 
 ---
 
@@ -85,10 +137,10 @@
 
 ### 測試結果錄影
 
-#### 1. iOS 測試結果 (測試設備：Iphone Xs, iOS 18.7.9)
+#### 1. iOS 測試結果 (測試設備：iPhone Xs, iOS 18.7.10)
 ![iOS 攔截測試結果](./test-result/ios-webview-interceptor-test.gif)
 
-#### 2. Android 測試結果 (測試設備：Samsung Galaxy Fold5, Android 16 / OneUI 8.5)
+#### 2. Android 測試結果 (測試設備：Samsung Galaxy Z Fold5, Android 16 / One UI 8.5)
 ![Android 攔截測試結果](./test-result/android-webview-interceptor-test.gif)
 
 ---

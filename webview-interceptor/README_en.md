@@ -3,30 +3,82 @@
 [中文版](README.md)
 
 This is a dual-platform (Android / iOS) WebView redirection interception testing and demonstration project.
-The purpose of this project is to deeply test and verify the limits and blind spots of native interceptors in WebViews under various scenarios (such as manual clicks, script redirections, asynchronous tasks, SPA routing).
+The purpose of this project is to deeply test and verify the limits and blind spots of native interceptors in WebViews under various scenarios (such as manual clicks, script redirections, asynchronous tasks, SPA routing, and form navigation).
 
 The establishment of this project stems from the common cognitive gaps during cross-domain collaboration. Many WebView behaviors that are basic common sense in the frontend field are often difficult to convince engineers from non-frontend fields simply through verbal explanation. To prevent technical discussions from devolving into subjective impressions like "that's just your imagination," this project provides a concrete experimental benchmark. It uses the most authentic dual-platform running results as the sole basis for technical verification.
+
+---
+
+## 📱 Benchmark Environment
+* 🍏 **iOS**: iPhone Xs, System Version **iOS 18.7.10**
+* 🤖 **Android**: Samsung Galaxy Z Fold5, System Version **One UI 8.5 (Android 16)**
+
+---
 
 ## Project Structure
 * **`Android/`**: Android version, using Kotlin with modern `WebViewClient` (handles in-page redirection) and `WebChromeClient` (handles new windows).
 * **`IOS/`**: iOS version, using Swift with `WKWebView`, `WKNavigationDelegate` (handles in-page redirection), and `WKUIDelegate` (handles new windows).
 
+---
+
 ## Test Scenarios Covered
 
 1. **Basic Redirection Interception**: `<a href="...">`, `location.href`, `window.open`.
 2. **Asynchronous Script Triggered (Event Loop Testing)**: Redirections triggered via `Promise.resolve().then` (Microtask) and `setTimeout` (Macrotask).
-3. **Interception Blind Spots / Failure Testing**:
-    * **SPA Routing Switch (`history.pushState`)**: Interception fails on both platforms (no reload behavior).
+3. **Interception Blind Spots / Failure & Platform Difference Testing**:
+    * **SPA Routing Switch (`history.pushState`)**: Interception fails on both platforms (pure frontend URL change without reload or navigation actions).
     * **Form Redirection (`<form>`)**:
-      * **Top-level Navigation (`target="_self"`)**: Behaves like a standard `location.href` navigation and is not affected by popup blockers. However, note that **POST requests** suffer from native flaws on both platforms (Android inherently fails to intercept POST requests and penetrates directly, while iOS intercepts them but the HTTP Body is always `nil` due to IPC limitations).
-      * **Opening a New Window (`target="_blank"`)**: Its behavior equates to `window.open`, making it **fully subjected to the browser's Popup Blocker**, unable to bypass asynchronous or timeout blocks.
-    * **Asynchronous and Delayed Popups (`fetch` / `setTimeout` + `window.open`)**: iOS WebKit is extremely strict on async (especially `fetch` which has a 0-second grace period and is blocked immediately); Android Chromium benefits from the UAv2 mechanism and typically allows it within a 5-second grace period.
+      * **Top-level Navigation (`target="_self"`)**: Behaves like standard `location.href` navigation and is not affected by popup blockers. However, note **POST requests**: Android native `shouldOverrideUrlLoading` by spec never intercepts POST (penetrates directly into the internal WebView); iOS `WKNavigationDelegate` intercepts them, but the `httpBody` is always `nil` due to cross-process (IPC) limitations.
+      * **Opening a New Window (`target="_blank"`)**: Follows Web Form Navigation lifecycle. Synchronous, Microtask, and fast Fetch submissions pass on both platforms; however, 1s Macrotask delay fails on iOS due to gesture expiration (allowed on Android under UAv2 5s grace period); POST `_blank` is successfully intercepted on iOS `WKUIDelegate`, while on Android it remains completely silent in temporary windows because `shouldOverrideUrlLoading` omits POST.
+    * **Asynchronous Popups (`fetch` / `setTimeout` + `window.open`)**: Android Chromium allows execution within its 5-second UAv2 grace period; iOS 18.7.10 modern WebKit preserves gesture activation for fast, lightweight `fetch` calls, but strictly blocks 1-second+ Macrotask delays like `setTimeout(1000)`.
 4. **Server-side Delayed 302 Redirect**:
     * Tests opening a new window (`_blank`) directly using an `a tag` or `window.open`, pointing to an API that intentionally delays for 2 seconds on the server side (simulating an async database query) before returning an HTTP 302 redirect.
     * **Result**: Works perfectly on both platforms! This proves that as long as the asynchronous waiting process is shifted to the server side, it can perfectly bypass the strict popup security restrictions imposed by WebViews on JS async callbacks.
 5. **Server-side Form Bridge (GET & POST)**:
     * Tests opening an intermediary server page in a new tab (`target="_blank"`), where the intermediary page directly triggers an API call in `<script>` upon load to fetch the destination URL and parameters, and then submits a Web Form (GET / POST) to navigate to the result page.
     * **Result**: Because the new tab is opened synchronously on user click, subsequent form navigation happens within the new page's own lifecycle and successfully forwards GET and POST parameters.
+
+---
+
+## 📊 Dual-Platform Full Benchmark Matrix
+
+| Category | Test Item (1 ~ 53) | Android 16 (Fold5) | iOS 18.7.10 (iPhone Xs) | Core Mechanism & Notes |
+| :--- | :--- | :---: | :---: | :--- |
+| **🚀 Advanced Experiments** | WebServer 302 Redirect & Form Bridge (incl. 6s delay) | 🟢 Intercepted & Allowed | 🟢 Intercepted & Allowed | Server-side async shift avoids client gesture loss |
+| **🟢 Both Platforms Succeed** | 1. a tag in-page navigation | 🟢 Intercepted | 🟢 Intercepted | Physical click top-level navigation |
+| | 2. a tag new window (`target="_blank"`) | 🟢 Intercepted | 🟢 Intercepted | Physical click new window navigation |
+| | 3. Dynamic a tag creation and click (sync) | 🟢 Intercepted | 🟢 Intercepted | Synchronous user gesture inheritance |
+| | 4. `location.href` in-page navigation | 🟢 Intercepted | 🟢 Intercepted | Script top-level navigation |
+| | 5. `window.open` in-page (`_self`) | 🟢 Intercepted | 🟢 Intercepted | Script top-level navigation |
+| | 6. `window.open` new window (`_blank`) | 🟢 Intercepted | 🟢 Intercepted | Synchronous popup token valid |
+| | 7. Microtask (Promise) -> `location.href` | 🟢 Intercepted | 🟢 Intercepted | In-page navigation has no popup restrictions |
+| | 8. Macrotask (setTimeout 1s) -> `location.href`| 🟢 Intercepted | 🟢 Intercepted | In-page navigation has no popup restrictions |
+| | 9. Fetch API -> `location.href` | 🟢 Intercepted | 🟢 Intercepted | In-page navigation has no popup restrictions |
+| | 10. Fetch API -> `window.open` (`_self`) | 🟢 Intercepted | 🟢 Intercepted | In-page navigation has no popup restrictions |
+| | 11. Fetch API -> `window.open` (`_blank`) | 🟢 Intercepted | 🟢 Intercepted | Android 5s grace period; iOS 18 fast Fetch gesture retained |
+| | 12. Fetch API -> dynamic a tag (`_blank`) | 🟢 Intercepted | 🟢 Intercepted | Same as item 11 |
+| | 13. HTML static form GET `_blank` (sync click) | 🟢 Intercepted | 🟢 Intercepted | Form navigation + sync gesture |
+| | 14. JS trigger static form GET `_blank` (sync) | 🟢 Intercepted | 🟢 Intercepted | Form navigation + sync gesture |
+| | 15. JS trigger static form GET `_blank` (Microtask) | 🟢 Intercepted | 🟢 Intercepted | Microtask preserves user gesture |
+| | 16. JS trigger static form GET `_blank` (after Fetch) | 🟢 Intercepted | 🟢 Intercepted | Fast Fetch allows form navigation |
+| | 17. Dynamic form GET `_blank` (sync) | 🟢 Intercepted | 🟢 Intercepted | Dynamic form with sync gesture |
+| | 18. Dynamic form GET `_blank` (Microtask) | 🟢 Intercepted | 🟢 Intercepted | Microtask preserves user gesture |
+| | 19. Dynamic form GET `_blank` (after Fetch) | 🟢 Intercepted | 🟢 Intercepted | Fast Fetch allows form navigation |
+| **🟡 Platform Differences & Quirks** | 20~30. Form POST in-page navigation (sync/micro/1s/fetch/6s/dynamic) | 🟡 Direct Penetration | 🟢 Intercepted (Body is nil) | Android ignores POST in `shouldOverrideUrlLoading`; iOS WKNavigationDelegate intercepts but Body is nil |
+| | 31. JS trigger static form GET `_blank` (Macrotask 1s) | 🟢 Intercepted | 🔴 Silent / No Response | Android benefits from UAv2 5s; iOS 1s Macrotask gesture expired |
+| | 32. Dynamic form GET `_blank` (Macrotask 1s) | 🟢 Intercepted | 🔴 Silent / No Response | Same as item 31 |
+| | 33~39. Form POST `_blank` (sync/micro/fetch/dynamic) | 🔴 Silent / No Response | 🟢 Intercepted (Body is nil) | Android never calls `shouldOverrideUrlLoading` for POST; iOS WKUIDelegate intercepts |
+| **🔴 Both Platforms Fail** | 40. SPA routing switch (`history.pushState`) | 🔴 No Native Notice | 🔴 No Native Notice | Pure URL state update without document reload |
+| | 41. Delayed 6s `window.open` (`_blank`) | 🔴 Popup Blocked | 🔴 Popup Blocked | Exceeds gesture lifespan on both (Android 5s / iOS 1s) |
+| | 42. Delayed 6s dynamic a tag (`_blank`) | 🔴 Silent / No Response | 🔴 Silent / No Response | Exceeds gesture lifespan on both |
+| | 43. JS trigger static form GET `_blank` (Macrotask 6s) | 🔴 Silent / No Response | 🔴 Silent / No Response | 6s timeout blocks both |
+| | 44. Dynamic form GET `_blank` (Macrotask 6s) | 🔴 Silent / No Response | 🔴 Silent / No Response | 6s timeout blocks both |
+| | 45. JS trigger static form POST `_blank` (Macrotask 1s) | 🔴 Silent / No Response | 🔴 Silent / No Response | iOS Macrotask timeout; Android omits POST |
+| | 46. JS trigger static form POST `_blank` (Macrotask 6s) | 🔴 Silent / No Response | 🔴 Silent / No Response | 6s timeout blocks both |
+| | 47. Dynamic form POST `_blank` (Macrotask 1s) | 🔴 Silent / No Response | 🔴 Silent / No Response | iOS Macrotask timeout; Android omits POST |
+| | 48. Dynamic form POST `_blank` (Macrotask 6s) | 🔴 Silent / No Response | 🔴 Silent / No Response | 6s timeout blocks both |
+| **🟣 JSBridge Native Communication** | 49~53. JSBridge (sync/micro/1s/6s/fetch) | 🟣 100% Success | 🟣 100% Success | Direct Native API invocation, 100% immune to Web popup rules |
+| **Custom Interceptions** | Custom Scheme (`myapp://`) & YouTube External App | 🟢 Intercepted | 🟢 Intercepted | Native URL scheme and external app handover |
 
 ---
 
@@ -85,10 +137,10 @@ To practically test the 4th and 5th scenarios mentioned above, a lightweight Nod
 
 ### Test Result Recordings
 
-#### 1. iOS Test Results (Test Device: iPhone Xs, iOS 18.7.9)
+#### 1. iOS Test Results (Test Device: iPhone Xs, iOS 18.7.10)
 ![iOS Interception Test Results](./test-result/ios-webview-interceptor-test.gif)
 
-#### 2. Android Test Results (Test Device: Samsung Galaxy Fold5, Android 16 / OneUI 8.5)
+#### 2. Android Test Results (Test Device: Samsung Galaxy Z Fold5, Android 16 / One UI 8.5)
 ![Android Interception Test Results](./test-result/android-webview-interceptor-test.gif)
 
 ---

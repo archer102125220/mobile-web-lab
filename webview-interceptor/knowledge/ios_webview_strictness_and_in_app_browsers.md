@@ -2,18 +2,24 @@
 
 [English Version](ios_webview_strictness_and_in_app_browsers_en.md)
 
-在進行跨平台 WebView 彈窗（`window.open` 或動態建立 `<a>` 標籤）測試時，許多前端開發者會發現 iOS 的行為不僅異常嚴格，而且在真實世界中（如放入 LINE、Facebook 等社群軟體開啟）甚至會遇到比原廠預設更惡劣的狀況。
+在進行跨平台 WebView 彈窗（`window.open`、動態 `<a>` 標籤或 `<form target="_blank">`）測試時，許多前端開發者會發現 iOS 的行為不僅異常嚴格，而且在真實世界中（如放入 LINE、Facebook 等社群軟體開啟）甚至會遇到比原廠預設更惡劣的狀況。
 
-本文件總結了 iOS WebView (主要是 WKWebView) 在不同版本、不同場景下的防禦機制與限制。
+> [!NOTE]
+> **📱 實測驗證基準環境 (Benchmark Environment)**
+> - 🍏 **iOS 設備**：iPhone Xs (iOS 18.7.10 / WebKit)
 
-## 1. iOS WebKit 對非同步 Token 的嚴格審查
+---
 
-相較於 Android Chromium 引擎相對寬容的「User Activation v2 (UAv2)」5 秒鐘寬限期，Apple 的 WebKit 引擎對於「非同步回呼 (Async Callback)」的審查明顯嚴苛許多：
-- **`fetch` 等 Promise 的 0 秒寬限**：只要牽涉到網路請求等非同步 Promise 操作，Token 會被立刻沒收，導致後續的 `window.open` 必定被底層判定為背景惡意彈窗而封殺。
-- **`setTimeout` 的極短寬限**：僅有針對第一層的 `setTimeout` 給予大約 1 秒的極短寬限期，超時或巢狀呼叫同樣會立刻失效。
+## 1. iOS WebKit 對非同步 Token 的審查演進
+
+相較於 Android Chromium 引擎相對寬容的「User Activation v2 (UAv2)」5 秒鐘寬限期，Apple 的 WebKit 引擎對於「非同步回呼 (Async Callback)」的審查歷史上極為嚴苛：
+- **`setTimeout` 宏任務的 1 秒臨界點**：僅有針對第一層的 `setTimeout` 給予大約 1 秒以內的寬限期，延遲達 1 秒或巢狀呼叫將立刻失去手勢背書，隨後的彈窗將被無情封殺。
+- **iOS 18 現代 WebKit 對快速 Fetch 的手勢保留**：在 iOS 18.7.10 實測中，輕量快速的 `fetch`（數十毫秒內完成回應）已被允許繼承手勢並成功觸發 `createWebViewWithConfiguration`，改善了過去版本「Fetch 0 秒立即封殺」的極端限制；但只要非同步跨入 1 秒以上的計時器宏任務，依然會觸發安全攔截。
 
 > [!NOTE]
 > 關於 iOS WebKit 在底層 Event Loop 中對 Macrotask (`setTimeout`) 與 Microtask (`Promise`) 更詳細的歷史演進與處置差異，已統一整理於：[async_popup_blocker_history.md](./async_popup_blocker_history.md) 的第 4 節。
+
+---
 
 ## 2. 真實世界更嚴格的挑戰：第三方 App 內建瀏覽器 (In-App Browser)
 
@@ -25,20 +31,26 @@
 3. **社群軟體的私心**：許多社群 App 為了把使用者的眼球「關在自己的 App 生態圈裡」，會刻意不實作這個函數，或者直接在函數內返回 `nil` (拒絕開啟)。
 4. **結果**：這會導致前端的 `window.open` 請求就像丟進黑洞一樣，無聲無息地消失。
 
+---
+
 ## 3. Apple 隱私權政策與 ITP (Intelligent Tracking Prevention) 影響
 
 Apple 近年來在 Safari 與 WebKit 大幅增強了 ITP 防追蹤機制。
 
-如果 `window.open` 跳轉目標是一個帶有跨站追蹤參數的第三方廣告網域（例如進行某種導購轉址或 Oauth 認證），在較新的 iOS 系統 (iOS 14+) 上，即使這是一個完美的同步點擊，WebKit 也可能因為判定該網址具有「跨站追蹤 (Cross-Site Tracking)」的嫌疑，而強制啟動隱私保護干預，進一步對彈窗或 Cookie 傳遞進行限縮或阻擋。
+如果 `window.open` 跳轉目標是一個帶有跨站追蹤參數的第三方廣告網域（例如進行某種導購轉址或 OAuth 認證），在較新的 iOS 系統上，即使這是一個完美的同步點擊，WebKit 也可能因為判定該網址具有「跨站追蹤 (Cross-Site Tracking)」的嫌疑，而強制啟動隱私保護干預，進一步對彈窗或 Cookie 傳遞進行限縮或阻擋。
 
-## 4. 附錄：iOS WebView 版本與支援生命週期 (紀錄於 2026-07-17)
+---
+
+## 4. 附錄：iOS WebView 版本與支援生命週期 (紀錄於 2026-09-04)
 
 在規劃跨平台 WebView 開發時，了解 iOS 版本的演進與支援界線是非常重要的：
 
 - **WKWebView 的引入 (最舊支援起點)**：Apple 於 **iOS 8 (2014年9月發布)** 首度引入 `WKWebView`，用以取代效能低落且存在記憶體外洩問題的 `UIWebView`。
-
-- **UIWebView 的全面封殺 (停止支援)**：Apple 於 **2019 年 12 月**宣布政策，並自 **2020 年 4 月** 起停止受理新 App 使用 UIWebView，**同年 12 月**起連現有 App 的更新版本也一併封殺。這意味著目前市場上活躍的 iOS App 已 100% 轉移至 `WKWebView`。
-- **官方明定的版本支援**：截至 **2026 年 7 月**，多數現代化與主流 App 的最低支援版本通常設定在 **iOS 15 (2021年9月發布)** 或 **iOS 16 (2022年9月發布)**。iOS 15 是一批經典舊設備（如 iPhone 6s、iPhone 7）所能升級的最後極限。對於低於此版本的舊系統，Apple 已實質上停止了常規的安全與框架更新支援。
+- **UIWebView 的全面封殺 (停止支援)**：Apple 於 **2019 年 12 月**宣布政策，並自 **2020 年 4 月** 起停止受理新 App 使用 UIWebView，**同年 12 月**起連現有 App 的更新版本也一併封殺。目前市場上活躍的 iOS App 已 100% 轉移至 `WKWebView`。
+- **官方明定的版本支援與分水嶺**：
+  - **iOS 15 (歷史硬體淘汰分水嶺)**：**iOS 15 (2021年9月發布)** 是一批經典舊設備（如 iPhone 6s、iPhone 7、第一代 iPhone SE）所能升級的最後極限。對於低於此版本的舊系統，Apple 已實質上停止了常規的安全與框架更新支援。
+  - **主流 App 最低支援版本**：截至 **2026 年 9 月**，多數現代化與主流 App 的最低支援版本通常設定在 **iOS 16** 或 **iOS 17**。
+  - **最新實測基準**：本專案使用之測試機 **iPhone Xs**（A12 Bionic 晶片）支援至 **iOS 18.7.10**，代表了當前 WebKit 引擎在舊款支援機型上的最新安全防護標準。
 
 ---
 

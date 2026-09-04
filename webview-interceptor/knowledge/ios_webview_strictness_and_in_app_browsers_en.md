@@ -2,56 +2,68 @@
 
 [中文版](ios_webview_strictness_and_in_app_browsers.md)
 
-When testing cross-platform WebView popups (`window.open` or dynamically creating `<a>` tags), many front-end developers find that iOS behavior is not only unusually strict, but in the real world (such as opening in social software like LINE, Facebook), they may even encounter situations worse than the original factory defaults.
-
-This document summarizes the defense mechanisms and restrictions of iOS WebView (mainly WKWebView) under different versions and scenarios.
-
-## 1. iOS WebKit's Strict Review of Asynchronous Tokens
-
-Compared to Android Chromium engine's relatively lenient "User Activation v2 (UAv2)" 5-second grace period, Apple's WebKit engine is noticeably stricter in reviewing "Async Callbacks":
-- **0-Second Grace for Promises like `fetch`**: As long as network requests or other asynchronous Promise operations are involved, the Token is immediately confiscated, causing subsequent `window.open` calls to inevitably be judged by the underlying layer as malicious background popups and thus blocked.
-- **Extremely Short Grace for `setTimeout`**: Only the first layer of `setTimeout` is given an extremely short grace period of about 1 second. Timeouts or nested calls will also cause immediate failure.
+When testing cross-platform WebView popups (`window.open`, dynamic `<a>` tags, or `<form target="_blank">`), frontend developers often discover that iOS behavior is not only exceptionally strict, but also encounters even harsher conditions when opened inside real-world social apps (such as LINE, Facebook, or Instagram).
 
 > [!NOTE]
-> More detailed historical evolution and handling differences for Macrotask (`setTimeout`) and Microtask (`Promise`) in the underlying Event Loop of iOS WebKit have been unified in Section 4 of: [async_popup_blocker_history_en.md](./async_popup_blocker_history_en.md).
-
-## 2. Stricter Challenges in the Real World: Third-Party App Built-in Browsers (In-App Browsers)
-
-In self-developed Apps, as long as the `WKUIDelegate` protocol is implemented, at least "synchronous" click `window.open` can operate successfully and be intercepted. But in real online environments, webpages are often opened through WebViews within third-party Apps (e.g., LINE, Facebook, Instagram), and front-end often faces the dilemma where **even the most basic synchronous `window.open` fails**.
-
-### Why is it completely blocked?
-1. **iOS Default Behavior is Inaction**: In iOS WKWebView, `window.open` and `target="_blank"` default to having **no behavior whatsoever**.
-2. **Control over the Delegation Mechanism**: To make `window.open` take effect, the native developer **must** manually implement the `createWebViewWithConfiguration` function in `WKUIDelegate` to actively "catch" the front-end's request to open a new window.
-3. **Selfishness of Social Software**: Many social Apps, in order to keep users' eyeballs "locked in their own App ecosystem", will deliberately not implement this function, or directly return `nil` (refusing to open) within the function.
-4. **Result**: This causes front-end `window.open` requests to disappear silently, as if thrown into a black hole.
-
-## 3. Apple Privacy Policies and ITP (Intelligent Tracking Prevention) Impact
-
-Apple has significantly enhanced the ITP anti-tracking mechanism in Safari and WebKit in recent years.
-
-If the target of a `window.open` redirection is a third-party advertising domain with cross-site tracking parameters (for example, for some kind of affiliate redirect or OAuth authentication), on newer iOS systems (iOS 14+), even if this is a perfect synchronous click, WebKit may forcibly activate privacy protection interventions because it judges the URL as suspected of "Cross-Site Tracking", further restricting or blocking popups or Cookie transmissions.
-
-## 4. Appendix: iOS WebView Versions and Support Lifecycle (Recorded on 2026-07-17)
-
-When planning cross-platform WebView development, it is very important to understand the evolution and support boundaries of iOS versions:
-
-- **Introduction of WKWebView (Oldest Support Starting Point)**: Apple first introduced `WKWebView` in **iOS 8 (Released Sep 2014)** to replace the low-performance `UIWebView` which suffered from memory leaks.
-
-- **Total Ban of UIWebView (End of Support)**: Apple announced the policy in **December 2019**, and from **April 2020** stopped accepting new Apps using UIWebView. Since **December of the same year**, even updates for existing Apps were banned. This means that active iOS Apps on the market today have 100% migrated to `WKWebView`.
-- **Officially Stated Version Support**: As of **July 2026**, the minimum support version for most modern and mainstream Apps is usually set at **iOS 15 (Released Sep 2021)** or **iOS 16 (Released Sep 2022)**. iOS 15 is the absolute limit to which a batch of classic old devices (like iPhone 6s, iPhone 7) can be upgraded. For older systems below this version, Apple has effectively ceased regular security and framework update support.
+> **📱 Benchmark Environment**
+> - 🍏 **iOS Device**: iPhone Xs (iOS 18.7.10 / WebKit)
 
 ---
 
-## Conclusion and Countermeasures
+## 1. Evolution of WebKit Asynchronous Token Scrutiny
 
-The strict iOS defense tested in local test Apps is actually just the "**basic bottom line**" given by Apple officially.
+Compared to the relatively lenient 5-second "User Activation v2 (UAv2)" window in Android's Chromium engine, Apple's WebKit engine has historically enforced strict scrutiny over asynchronous callbacks:
+- **1-Second Critical Threshold for `setTimeout` Macrotasks**: WebKit only grants a brief grace period (under 1 second) for first-level `setTimeout` calls; delays exceeding 1 second or nested timers forfeit the user gesture endorsement immediately, causing popups to be blocked.
+- **iOS 18 Modern WebKit Fast Fetch Retention**: In empirical tests on iOS 18.7.10, fast and lightweight `fetch` requests (completing within sub-seconds) retain the user gesture and successfully trigger `createWebViewWithConfiguration`, overcoming the historical "0-second instant block" of earlier WebKit versions. However, asynchronous delays that enter 1s+ timer macrotasks remain strictly blocked.
 
-In real online environments, front-end developers often face **more uncontrollable and closed** WebView environments (third-party Apps simply do not implement popup delegation). This further corroborates the final conclusion of the cross-platform front-end architecture:
+> [!NOTE]
+> Detailed historical evolution and Event Loop handling differences between Macrotasks (`setTimeout`) and Microtasks (`Promise`) are documented in Section 4 of [async_popup_blocker_history_en.md](./async_popup_blocker_history_en.md).
 
-**As long as the browser's native popups (`window.open` / `target="_blank"`) are involved, the initiative for defense will always remain in the hands of Apple and native App developers.**
+---
 
-The only solutions that the front-end can grasp 100% and guarantee stable operation are to **avoid relying on browser popups inside asynchronous callbacks**, and switch to:
-1. **In-Page Routing Redirection (SPA)**
-2. **In-Page Redirection (`location.href`)** avoiding popup blocker
-3. **Via JSBridge** calling native App Functions, letting the native App decide whether to open the system default browser or push a new WebView window.
-4. **Server-side Intermediary Architectures (302 Redirect / Form Bridge)**: Front-end opens the window synchronously and shifts the asynchronous waiting to the backend, completely dodging iOS WebKit's ruthless cancellation of async gesture Tokens.
+## 2. Harsher Real-World Challenges: Third-Party In-App Browsers
+
+In proprietary custom Apps, implementing the `WKUIDelegate` protocol allows synchronous `window.open` requests to function and be intercepted properly. In real-world production environments, however, webpages are often loaded within third-party In-App Browsers (e.g., LINE, Facebook, Instagram), where frontend developers frequently encounter scenarios where **even basic synchronous `window.open` calls fail completely**.
+
+### Why Are Popups Completely Blocked?
+1. **iOS Default Behavior is Non-Action**: By default in `WKWebView`, `window.open` and `target="_blank"` have **no default action**.
+2. **Native Delegate Ownership**: For `window.open` to function, native developers **must** manually implement `webView(_:createWebViewWith:for:windowFeatures:)` in `WKUIDelegate` to intercept the request.
+3. **Walled Garden Strategy**: Many social apps intentionally omit this delegate or explicitly return `nil` to keep user attention within their own app ecosystem.
+4. **Result**: The popup request disappears silently into a void.
+
+---
+
+## 3. Impact of Apple Privacy Policies and ITP (Intelligent Tracking Prevention)
+
+Apple has significantly strengthened ITP anti-tracking mechanisms across Safari and WebKit.
+
+If a `window.open` destination contains cross-site tracking parameters to a third-party domain (e.g., affiliate redirects or OAuth flows), WebKit may classify the navigation as suspicious tracking and trigger privacy interventions, restricting or blocking popups and cookies even on synchronous clicks.
+
+---
+
+## 4. Appendix: iOS WebView Version & Support Lifecycle (Recorded 2026-09-04)
+
+Understanding the lifecycle of iOS versions is critical for cross-platform architecture:
+
+- **Introduction of WKWebView (Legacy Baseline)**: Apple introduced `WKWebView` in **iOS 8 (September 2014)** to replace the memory-leaking and slow `UIWebView`.
+- **Complete Sunset of UIWebView**: Apple banned UIWebView in new App Store submissions in **April 2020** and existing app updates in **December 2020**. Current iOS apps are 100% migrated to `WKWebView`.
+- **Official Version Baseline & Historical Watersheds**:
+  - **iOS 15 (Hardware Retirement Watershed)**: **iOS 15 (September 2021)** was the final upgrade limit for a generation of classic devices (such as iPhone 6s, iPhone 7, and 1st gen iPhone SE). For OS versions below this, Apple has practically discontinued regular security and framework updates.
+  - **Mainstream App Minimum Deployment Target**: As of **September 2026**, mainstream apps target **iOS 16** or **iOS 17** as their minimum deployment target.
+  - **Latest Test Benchmark**: The test device in this project, **iPhone Xs** (A12 Bionic chip), supports up to **iOS 18.7.10**, representing the latest WebKit security baseline on supported hardware.
+
+---
+
+## Conclusion and Strategy
+
+The strict defense observed in local test apps represents only the **baseline** defined by Apple.
+
+In production, frontend developers face even more restricted environments in third-party in-app browsers. This confirms the fundamental architectural rule:
+
+**Whenever browser native popups (`window.open` / `target="_blank"`) are involved, control remains entirely in the hands of Apple and the native App developer.**
+
+The only reliable strategies with 100% stability are:
+1. **SPA in-page routing**
+2. **In-page navigation (`location.href`)** to avoid popup blockers
+3. **JSBridge Native APIs** to let the native App manage navigation
+4. **Server-Side Relaying (302 Redirect / Form Bridge)**: Synchronously open a window and shift async waiting to the server side.

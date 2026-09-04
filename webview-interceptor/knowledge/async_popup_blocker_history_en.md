@@ -2,60 +2,71 @@
 
 [中文版](async_popup_blocker_history.md)
 
-This document records the fundamental reasons why using `window.open` or dynamically creating `<a>` tags after asynchronous API calls in modern front-end frameworks (Vue / React) easily suffers from interception failures or blockages in mobile App embedded WebViews.
+This document provides an in-depth analysis of the underlying causes, engine historical evolution, pitfall guidelines, and standard architectural solutions for why triggering `window.open`, dynamic `<a>` tags, or `<form target="_blank">` after an asynchronous API call in modern frontend frameworks (Vue / React / Vanilla JS) encounters interception failures or underlying blocks in mobile in-app WebViews (iOS WKWebView & Android WebView).
 
-## 1. Problem Phenomenon: Front-End Asynchronous Popups Fail
+> [!NOTE]
+> **📱 Benchmark Environment**
+> - 🍏 **iOS**: iPhone Xs (iOS 18.7.10 / WebKit)
+> - 🤖 **Android**: Samsung Galaxy Z Fold5 (Android 16 / One UI 8.5 / Chromium WebView)
 
-Modern front-end development habits are "data-driven interfaces". For example, the following common logic in Vue/React:
-1. User clicks a button
-2. Triggers a Function to send an HTTP request (Ajax / Fetch)
-3. Waits for asynchronous response (Promise `await` or `.then`)
-4. After getting the new URL, executes `window.open(newUrl, '_blank')`
+---
 
-On general desktop browsers, as long as the asynchronous waiting time is not long, a new tab can usually be successfully popped up. **But on mobile device WebViews (iOS WKWebView or Android WebView), this `window.open` often fails (no response or returns `null`).**
+## 1. Problem Phenomenon: Frontend Asynchronous Popup Failure
 
-## 2. Root Cause of Failure: User Gesture Context Loss and Defense Modes
+Modern frontend development commonly follows a "data-driven UI" pattern:
+1. User clicks a button.
+2. An event handler triggers an asynchronous HTTP request (Ajax / Fetch).
+3. The app waits for the response (via `await` or `.then`).
+4. Once the target URL is retrieved, `window.open(newUrl, '_blank')` or a form submission is executed.
 
-Modern Apps (especially finance, e-commerce, and super Apps), for security and defense mechanisms, usually turn off WebView's "allow scripts to open windows automatically" permission:
+On desktop browsers, this usually succeeds if the async delay is short. **In mobile WebViews, however, this asynchronous popup encounters strict security scrutiny and is often silently blocked.**
+
+---
+
+## 2. Root Cause: User Gesture Context Loss and Defense Modes
+
+Modern Apps (especially financial, e-commerce, and super apps) typically disable script-initiated window openings for security and performance reasons:
 - **iOS**: `preferences.javaScriptCanOpenWindowsAutomatically = false`
 - **Android**: `settings.setJavaScriptCanOpenWindowsAutomatically(false)`
 
-The purpose of this strict setting is to:
-1. **Prevent Overlay Ads and Popup Abuse**: Prevent malicious code from infinitely opening new windows in the background and exhausting resources.
-2. **Prevent Phishing & UI Spoofing**: Prevent malicious scripts from secretly counting down and suddenly popping up fake system login pages to steal account passwords. Forcing the redirection to be bound to the moment of "physical click" allows the user to clearly know that their click triggered the new window.
-3. **Prevent Malicious Background Store Redirects (Drive-by Redirects)**: Block redirection behaviors that directly call up the App Store or external Apps without the user's consent.
-4. **Strict Control of Phone Hardware Resources**: Every new window consumes a large amount of phone memory (RAM), and opening them secretly in the background will cause the App to crash.
+This strict configuration serves several purposes:
+1. **Preventing Popup Abuse**: Stops malicious background scripts from exhausting mobile RAM with infinite windows.
+2. **Preventing Phishing & UI Spoofing**: Stops scripts from delaying and popping up fake login forms, ensuring popups only occur on immediate physical clicks.
+3. **Preventing Drive-by Redirects**: Blocks unprompted redirections to the App Store or external apps.
+4. **Strict Device Resource Management**: Every new window consumes significant memory (RAM); unmonitored background popups can easily trigger OS Out-Of-Memory (OOM) crashes.
 
-**Why does async die?**
-When the front-end waits via `fetch` or `setTimeout`, the Event Loop is interrupted (it can be imagined as being cut into a thread different from the user operation event for subsequent actions). When the asynchronous task finishes and executes to `window.open`, the "physical click pass (User Gesture Token)" issued by the underlying system has expired or been lost.
-At this time, WebView will determine this is a **"malicious background popup without physical click (user operation) endorsement"**, and ruthlessly block it.
+### Why Does Asynchronous Code Fail?
+When JavaScript awaits a timer (`setTimeout`) or delayed network request, the Event Loop context breaks (switching out of the immediate user gesture execution thread). By the time the popup API is invoked, the underlying **User Gesture Token / Transient Activation** has expired or been revoked.
+The WebView treats this as an **"unauthorized background popup without user gesture endorsement"** and blocks it immediately.
 
-## 3. Solutions: JSBridge and Server-side Architectures (302 Redirect / Form Bridge)
+---
 
-Facing the strict defense mechanisms mentioned above, purely front-end bypass techniques (like creating hidden `<a>` and triggering `.click()`) are extremely unstable and easily blocked. Currently, there are three standard architectural solutions in the industry that guarantee a 100% success rate:
+## 3. Architecture Solutions: JSBridge and Server-Side Relaying (302 / Form Bridge)
 
-### Solution 1: Abandon URL Interception, Embrace JSBridge (Most Common & Flexible)
+Faced with these strict defense mechanisms, pure frontend workarounds (such as dynamically creating hidden `<a>` elements and triggering `.click()`) are extremely unreliable and easily blocked. The industry employs three standard architecture solutions with 100% success rates:
 
-Do not go through the browser's `window.open` engine, but let the front-end "directly command" the native App to open the screen.
+### Solution 1: Abandon URL Interception, Embrace JSBridge (Recommended & Highest Flexibility)
 
-### Front-End Implementation Method:
+Instead of relying on browser popup engines, let the frontend directly command the native App to open the destination.
+
+#### Frontend Implementation:
 ```javascript
 async function handleOpenUrl() {
-    // 1. Wait for asynchronous API
+    // 1. Wait for async API
     const newUrl = await fetchUrlFromBackend();
     
-    // 2. Call Native via JSBridge (Does not go through the browser's popup engine)
-    if (window.AndroidApp) {
+    // 2. Call Native via JSBridge (bypasses browser popup engine)
+    if (window.AndroidApp && window.AndroidApp.openNewWindow) {
         window.AndroidApp.openNewWindow(newUrl); // Android
-    } else if (window.webkit && window.webkit.messageHandlers) {
+    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openNewWindow) {
         window.webkit.messageHandlers.openNewWindow.postMessage(newUrl); // iOS
     } else {
-        window.open(newUrl, '_blank'); // Downgrade: General browser
+        window.open(newUrl, '_blank'); // Fallback: Desktop browser
     }
 }
 ```
 
-### Native End (Android) Implementation Example:
+#### Native Android (Kotlin) Implementation:
 ```kotlin
 class WebAppInterface(private val context: Context) {
     @JavascriptInterface
@@ -64,103 +75,155 @@ class WebAppInterface(private val context: Context) {
         context.startActivity(intent)
     }
 }
-// Inject the interface to the front-end
+// Inject interface to WebView
 webView.addJavascriptInterface(WebAppInterface(this), "AndroidApp")
 ```
 
-### JSBridge Architecture Advantages:
-- **100% Success Rate**: This is equivalent to "front-end calling a Function of the native App", completely bypassing WebView's malicious popup blocking mechanism.
-- **Ignores Asynchronous Delay**: No matter how long the API request takes, as long as JSBridge is called, the native end will definitely execute it, without the problem of gesture credential expiration.
-- **Clear Responsibilities**: The front-end focuses on handling business logic (getting the URL), and matters requiring control over the screen like opening a window are handed back to the native App.
+#### Native iOS (Swift) Implementation:
+```swift
+class ViewController: UIViewController, WKScriptMessageHandler {
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "openNewWindow", let urlString = message.body as? String, let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
+}
+// Register MessageHandler
+webView.configuration.userContentController.add(self, name: "openNewWindow")
+```
 
-### Solution 2: Server-side 302 Redirect
+#### JSBridge Architectural Advantages:
+- **100% Success Rate**: Equivalent to "Frontend invoking a Native Function", completely bypassing the WebView popup blocker.
+- **Immune to Async Delays**: Regardless of how long the API call takes, calling the JSBridge guarantees native execution without token expiration issues.
+- **Clear Separation of Concerns**: Frontend handles business logic; screen control and system browser invocation are handed back to the native App.
 
-If architectural constraints prevent the use of JSBridge, another perfect solution is to **shift the asynchronous waiting process to the server side**.
+---
 
-Instead of having the front-end call `fetch` and wait for the result before executing `window.open` (which causes Token loss), it is better to **directly** execute `window.open('https://api.yourdomain.com/get-url-and-redirect', '_blank')` synchronously at the moment the user clicks.
+### Solution 2: Server-Side 302 Redirection (Server-side 302 Redirect)
 
-- After receiving the request, the server performs asynchronous database queries or logical operations on the backend.
-- Once the operation is complete, the server directly returns an `HTTP 302 Found` status code and includes the target URL in the `Location` Header.
-- Browsers natively support 302 redirects and will automatically follow and navigate to that URL.
+If architectural constraints prevent adding a JSBridge, another standard solution is **shifting the asynchronous waiting period to the server**.
 
-**Advantages of Server-side 302 Redirects**:
-- **Perfectly Bypasses Async Restrictions**: Because the front-end triggers `window.open` "synchronously", the physical click pass (User Gesture Token) is not lost at all. The subsequent asynchronous waiting occurs at the network connection level, which will not trigger WebView's security interception.
-- **Pure Web Technology**: It does not rely on Native Apps to develop JSBridge, making it suitable for scenarios where App-side code cannot be modified.
-- *(Note: The mock-server in this project has implemented a demo of this mechanism, and the test results confirm that both platforms can successfully allow it!)*
+Instead of waiting for `fetch` on the client and calling `window.open` (which drops the token), the client **synchronously** executes `window.open('https://api.yourdomain.com/get-url-and-redirect', '_blank')` upon the physical user click:
+- The server receives the request, performs asynchronous database queries or calculations, and responds with `HTTP 302 Found` with the target `Location` header.
+- The browser natively follows the 302 redirect.
 
-*(Additional Note: This method will cause the URL intercepted by the native end to be the intermediate API URL, rather than the final destination URL. If the native end has routing logic that relies on the URL content, you need to pay extra attention to this difference.)*
+#### Server-Side 302 Advantages:
+- **Flawless Async Bypass**: The initial `window.open` is synchronous, preserving the User Gesture Token. Asynchronous latency occurs at the network layer.
+- **Pure Web Technology**: Requires no native App modifications, ideal for WebViews in third-party or unmodifiable Apps.
+- *(Note: The native layer will intercept the relay API URL rather than the final destination URL; adapt routing logic accordingly).*
 
-### Solution 3: Server-side Intermediary Page + Web Form Navigation (Server-side Form Bridge: GET & POST)
+---
 
-When the navigation target needs to **carry large payloads or POST sensitive parameters** (e.g., third-party payment gateways, OAuth authorization credentials), a simple 302 GET redirect may be inadequate (due to URL length limits and risks of leaking sensitive data in URL logs). In this case, "Server-side Intermediary Page + Form Navigation" is another robust architectural solution:
+### Solution 3: Server-Side Form Bridge (Server-side Form Bridge: GET & POST)
 
-1. **Front-end Synchronously Opens Intermediary Page**: Upon user click, the front-end synchronously executes `<a href="https://server.com/form-bridge?method=POST" target="_blank">` to open the server-hosted intermediary page.
-2. **Intermediary Page Fetches API & Assembles Form**: Once loaded in its own independent window, the intermediary page directly initiates an asynchronous `fetch` in `<script>` to request the target URL and form payload from the backend API.
-3. **Submit Same-page Form**: After receiving data, it dynamically creates a `<form method="POST" action="targetUrl">`, appends hidden inputs, and invokes `form.submit()`.
+When transferring large POST payloads or sensitive data (e.g., third-party payment gateways, OAuth):
 
-**Advantages of Intermediary Form Bridge**:
-- **Full Support for POST & Large Payloads**: Breaks URL length limitations, perfectly accommodating complex business scenarios requiring POST data.
-- **Immune to Asynchronous Timeouts**: Because the new tab is opened "synchronously" upon user click, subsequent asynchronous API waiting inside the intermediary page (even if exceeding Android's 5s or iOS's 1s threshold) does not matter—the resulting `form.submit()` is a "same-page navigation" rather than "opening a new popup", entirely avoiding the WebView Popup Blocker!
-- *(Note: The mock-server in this project implements a demo of this mechanism, including regular and 6-second timeout tests, confirming that both platforms successfully allow navigation!)*
+1. **Frontend synchronously opens relay page**: User clicks, and the client synchronously executes `<a href="https://server.com/form-bridge?method=POST" target="_blank">`.
+2. **Relay page calls API and constructs form**: The relay page loads in an isolated window lifecycle, calls the backend API via `fetch`, constructs a `<form method="POST" action="targetUrl">` with hidden inputs, and calls `form.submit()`.
+3. **In-page Form Submission**: Submitting the form navigates the current tab.
 
-### 📊 Deep Architectural Comparison of the Three Solutions
+#### Server-Side Form Bridge Advantages:
+- **Full GET & POST Payload Support**: Overcomes URL length limits and protects sensitive parameters from appearing in URL logs.
+- **Immune to Async Timeouts**: The new tab was opened synchronously on the initial click. Subsequent in-page `form.submit()` inside the relay page is an "in-page navigation" rather than a "new popup", completely exempt from Popup Blocker constraints.
+- *(Note: Fully demonstrated in mock-server with standard and 6s timeout tests; both iOS and Android pass seamlessly).*
 
-| Dimension | 1. JSBridge Native Communication | 2. Server-side 302 Redirect | 3. Server-side Form Bridge |
+---
+
+### 📊 Comprehensive Solution Comparison Matrix
+
+| Dimension | 1. JSBridge Native Communication | 2. Server-Side 302 Redirection | 3. Server-Side Form Bridge |
 | :--- | :--- | :--- | :--- |
-| **Operating Mechanism** | Web calls native function; native invokes system browser directly | Front-end synchronously opens new tab; backend processes async and returns 302 Location | Front-end synchronously opens bridge page; bridge page fetches API and submits same-page form |
-| **HTTP Method Support** | Native Intents (Customizable) | **GET only** | Full **GET & POST** support |
-| **Data Payload Capacity** | Extremely high (Native JSON/String) | Moderate (Limited by URL length) | **Extremely high** (Supports large POST Body payloads) |
-| **Client App Dependency** | **High** (Requires native code in Android/iOS) | **Zero** (Pure Web standards) | **Zero** (Pure Web standards) |
-| **Async Timeout Immunity** | 🟢 **100% Immune** (No gesture token needed) | 🟢 **100% Immune** (Waiting is at network transport layer) | 🟢 **100% Immune** (Same-page form navigation doesn't trigger popup blocker) |
-| **Best Use Cases** | Enterprise in-house App tightly integrated with H5 | Unmodifiable App client, lightweight GET navigation | Third-party payment gateways, OAuth sensitive token transfers |
+| **Mechanism** | Web calls Native Function; App invokes system browser | Frontend sync-opens tab; Server redirects via 302 Location | Frontend sync-opens relay tab; Relay tab submits in-page Form |
+| **HTTP Method Support** | Native Intent (Customizable) | **GET Only** | Full **GET & POST** |
+| **Data Payload Size** | Unlimited (Native string/JSON) | Moderate (Constrained by URL length) | **Unlimited** (Supports large POST Body payloads) |
+| **Client App Dependency** | **High** (Requires dual-platform native code) | **Zero** (Pure Web standard) | **Zero** (Pure Web standard) |
+| **Async Timeout Immunity** | 🟢 **100% Immune** (No token issues) | 🟢 **100% Immune** (Waits at network layer) | 🟢 **100% Immune** (In-page navigation exempt from popup blocker) |
+| **Optimal Use Cases** | In-house enterprise Apps with hybrid H5 | Third-party WebViews, lightweight GET links | Payment gateways, OAuth, large POST parameter transfers |
 
-## 4. Differences in Underlying Engine Handling of Async Tokens Across Platforms (Event Loop)
+---
 
-Even if the native popup permission is turned off, the underlying browser engines of the dual platforms have completely different underlying implementations for the life cycle of the "User Gesture Token":
+## 4. Dual-Platform Underlying Engine Differences in Token & Form Navigation (Event Loop)
 
-### Android (Chromium Engine): UAv2 5-Second Grace Period
-Starting from Chrome 72, the **"User Activation v2 (UAv2)"** mechanism was introduced.
-- When a user performs a physical click, the system issues a **Transient Activation**.
-- In the Android WebView environment and specific versions, the survival time of this credential can be up to **5 seconds**.
-- **Token Refresh Mechanism**: These 5 seconds are not rigidly bound from the first click. As long as within these 5 seconds, the user **continues to have any valid interaction with the screen (e.g., swiping, clicking again)**, this 5-second countdown timer will be **reset and refreshed**.
-- **Most crucially: Chromium allows this credential to penetrate asynchronous `Promise` (including `fetch`) and `setTimeout`!**
-- Therefore, as long as the API response speed or the delay time of `setTimeout` does not exceed "within 5 seconds after the last interaction", when executing to `window.open`, the credential is still within the validity period, Android will judge that "this is still triggered by user click", and thus allow the popup. Once it exceeds 5 seconds after the last interaction, it will still face a failure fate.
+Even with popup permissions disabled, the underlying browser engines process User Gesture Tokens differently across the Event Loop:
 
-### iOS (WebKit Engine): 1-Second Grace Period and Evolution of Async Mechanisms
-iOS WebKit's defense mechanism has significant differences from Android (Chromium), and its historical evolution has also undergone multiple modifications to underlying logic:
+### Android (Chromium Engine): UAv2 5s Grace Period, Token Refresh & POST Omission
 
-1. **Macrotask and 1-Second Grace Period**:
-   - In the early days, many developers mistakenly believed that iOS would fail as long as it entered `setTimeout` (0-second grace period), but in fact, there used to be a special handling of the **"First Layer 1-Second Grace Period"** for `setTimeout` in the WebKit source code (can be seen in WICG/interventions #12 engineer discussions).
-   - If the user's click triggers `setTimeout` and the delay is less than 1000 milliseconds, the first layer callback can inherit the Token and popup. But if the delay exceeds 1 second, or a "second layer `setTimeout`" occur, the Token will be interrupted.
+1. **User Activation v2 (UAv2) 5s Lifespan**:
+   - Introduced in Chrome 72, Chromium uses **User Activation v2 (UAv2)**.
+   - Physical clicks grant a **Transient Activation**.
+   - Defined in Chromium source code as `kActivationLifespan = 5000ms` (5 seconds).
+   - **Chromium allows this token to penetrate asynchronous `Promise` (including `fetch`) and `setTimeout`**. As long as total delay is within 5 seconds, `window.open` succeeds. Once 5 seconds elapse without interaction, the token expires.
 
-2. **Microtask and Promise Evolution History**:
-   - **[Early Lenient Period] Before 2018 (Early iOS 12 and before)**: WebKit at that time actually **allowed inheriting gestures** for pure microtasks (like `Promise.resolve().then()`) (In Mozilla Bugzilla #1469730, developers confirmed that Safari could smoothly trigger popups from microtasks in 2018). Pure microtasks inserted and executed before the end of the current Event Loop cycle mostly triggered popups smoothly.
-   - **[Strict Blocking of Fetch / Async Network Requests]**: Although pure microtasks could pass, and WebKit in 2020 (WebKit Bugzilla #215014) once implemented a mechanism to forward gestures via Promise for specific APIs like **WebAuthn**, this **does not apply to popups (`window.open`)**! According to developer actual tests in WebKit Bugzilla #225559, in iOS WebKit, as long as `fetch` or any asynchronous Promise operation involving the network or even reading a Blob is called, even if the time spent is far less than 1 second, the Token will be **immediately confiscated**. This means compared to the 1-second grace period of `setTimeout`, Promise operations like `fetch` are even stricter for popups on iOS, equivalent to "0-second grace".
-   - **[Schrödinger's State] Recent Years (iOS 15 and Later) and In-App Browsers**: In addition to the underlying asynchronous restrictions mentioned above, Apple has also significantly strengthened privacy and anti-popup abuse mechanisms (such as ITP related protections) in recent years. In actual scenarios (especially built-in WebViews of social software / In-App Browsers, or with advanced protections turned on), the review of Tokens has become more opaque and stringent, making front-end developers feel the popup mechanism is "sometimes good, sometimes bad".
-     
-**Summary and Pitfall Avoidance Guide**:
-In pure Web development, front-end engineers often use a well-known bypass trick: "First open a blank window synchronously `window.open('', '_blank')`, wait for the asynchronous request to complete, then modify `location.href`" (can be seen in StackOverflow references below).
-However, **this trick often triggers a disaster in Native App (In-App Browser / WebView) development**. When the front-end opens a blank window, the native end's `WKUIDelegate` or `WebChromeClient` will intercept a request with an empty URL (`""`) or `about:blank` in the first time, causing the native end to be unable to parse the interception or route the Deep Link correctly based on the URL; if the native end reluctantly allows it to pass, the user will first see a confusing blank screen, leading to a terrible experience.
+2. **Token Refresh Mechanism**:
+   - The 5-second lifespan is not strictly locked to the initial click. According to Chromium source code, as long as the user **continually interacts with the screen (e.g., scrolling, touching, or clicking again)** within the 5-second countdown, the timer is **reset and renewed**.
 
-Therefore, because the life cycle determination mechanisms of the dual-platform engines are completely inconsistent, coupled with the fact that purely front-end workarounds fail in native environments, adopting **JSBridge** (native total control) or **Server-side Intermediary Architectures (302 Redirect / Form Bridge)** are the only three standard solutions that guarantee 100% stable operation across both platforms.
+3. **Android `shouldOverrideUrlLoading` Omits POST Requests**:
+   - The Android SDK explicitly specifies that `WebViewClient.shouldOverrideUrlLoading` is never called for POST requests.
+   - In-page POST forms penetrate directly into the WebView; POST `target="_blank"` forms trigger `WebChromeClient.onCreateWindow`, but the temporary window never invokes `shouldOverrideUrlLoading` and is not attached to the view hierarchy, making POST `_blank` completely silent on Android.
+
+---
+
+### iOS (WebKit Engine): 1s Macrotask Limit, Historical Evolution & POST Interception
+
+iOS WebKit handles user gesture propagation with strict and evolving heuristics:
+
+1. **1-Second Macrotask (setTimeout) Limit**:
+   - WebKit includes a **1-second grace period for first-level macrotasks** (discussed in GitHub WICG/interventions #12).
+   - If a `setTimeout` callback executes within 1000ms, it retains the token. Delays exceeding 1s or nested macrotasks drop the token.
+
+2. **Microtasks and Promise Historical Evolution**:
+   - **Early Permissive Era (Pre-2018 / iOS 12 and earlier)**: WebKit permitted user gestures to propagate through microtasks like `Promise.resolve().then()` (verified in Mozilla Bugzilla #1469730).
+   - **Historical Strict 0s Fetch Revocation**: In 2020, WebKit introduced Promise gesture propagation behind a feature flag for WebAuthn (WebKit Bugzilla #215014), but excluded popups. WebKit Bugzilla #225559 proved that any network `fetch` or Blob operation immediately revoked user gestures, acting as an effective "0-second grace period".
+   - **iOS 18 Modern WebKit Fast Fetch Retention**: Empirical tests on iOS 18.7.10 demonstrate that fast, lightweight `fetch` operations (completing within sub-seconds) now retain Transient Activation, allowing subsequent `window.open`, dynamic `<a>`, and `<form target="_blank">` to be intercepted by native `WKUIDelegate`.
+   - **"Schrödinger State" in In-App Browsers (iOS 15+)**: Intelligent Tracking Prevention (ITP) and in-app browser webview wrappers (e.g., LINE, Facebook) apply opaque heuristics that make async popups appear unpredictable.
+
+3. **Form Navigation (`form.submit()`) vs Popup (`window.open()`)**:
+   - Form submissions follow WebKit Form Navigation (`FrameLoader::submitForm`). When targeting `_blank`, WebKit queries `WKUIDelegate.webView(_:createWebViewWith:for:windowFeatures:)`.
+   - **iOS intercepts POST `_blank`**: Both GET and POST `_blank` trigger the native dialog on iOS; however, due to WebKit IPC architecture, `navigationAction.request.httpBody` is always `nil` at the interception point.
+
+---
+
+### ⚠️ Pitfall Guide: The Catastrophic Side Effects of `window.open('', '_blank')` in Native WebViews
+
+In desktop web development, a well-known workaround is: *"Open a blank tab synchronously via `window.open('', '_blank')`, and update `location.href` once the async response returns"* (see StackOverflow reference below).
+
+However, **this workaround causes severe disasters in Native App WebViews**:
+1. When the blank window opens, native `WKUIDelegate` or `WebChromeClient` intercepts an empty URL (`""`) or `about:blank`.
+2. Native routing, domain whitelisting, and Deep Link parsing fail completely because the destination URL is unknown.
+3. If the native layer allows the window, users face a confusing, prolonged white screen; if the native layer ignores empty URLs, subsequent `location.href` changes cannot trigger native interception again.
+
+Therefore, because cross-platform engine lifecycles differ and frontend workarounds fail in native environments, utilizing **JSBridge** or **Server-side Relaying (302 Redirect / Form Bridge)** remains the only guaranteed cross-platform strategy.
+
+---
 
 ## 5. References
-- 📖 [Chromium Official Blog: User Activation v2 (UAv2) Mechanism Introduction](https://developer.chrome.com/blog/user-activation)
-- 📖 [MDN Web Docs: Transient Activation](https://developer.mozilla.org/en-US/docs/Glossary/Transient_activation)
-- 📖 [Chromium Source Code: user_activation_state.h (Reveals the 5-second constant kActivationLifespan)](https://github.com/chromium/chromium/blob/7115760f2e6dafa470a579182b2709ded743e683/third_party/blink/public/common/frame/user_activation_state.h#L23)
-- 📖 [Chromium Source Code: user_activation_state.cc (Token refresh implementation)](https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/common/frame/user_activation_state.cc)
-- 📖 [Android Official Docs: setJavaScriptCanOpenWindowsAutomatically](https://developer.android.com/reference/android/webkit/WebSettings#setJavaScriptCanOpenWindowsAutomatically(boolean))
-- 📖 [Apple Developer Docs: WKPreferences.javaScriptCanOpenWindowsAutomatically](https://developer.apple.com/documentation/webkit/wkpreferences/javascriptcanopenwindowsautomatically)
-- 📖 [Mozilla Bugzilla #1469730: window.open popup is blocked from microtask](https://bugzilla.mozilla.org/show_bug.cgi?id=1469730)
-- 📖 [GitHub WICG/interventions #12: user gesture required for sensitive operations (Reveals WebKit's 1-second grace period for setTimeout)](https://github.com/WICG/interventions/issues/12)
+
+### 🍏 iOS / WebKit Official & Standards
+- 📖 [Apple Developer: WKUIDelegate webView(_:createWebViewWith:for:windowFeatures:)](https://developer.apple.com/documentation/webkit/wkuidelegate/1536907-webview)
+- 📖 [Apple Developer: WKPreferences.javaScriptCanOpenWindowsAutomatically](https://developer.apple.com/documentation/webkit/wkpreferences/javascriptcanopenwindowsautomatically)
 - 📖 [WebKit Bugzilla #225559: Implement standards-compliant user gesture tracking](https://bugs.webkit.org/show_bug.cgi?id=225559)
 - 📖 [WebKit Bugzilla #215014: Move user gesture propagation over promise behind a feature flag](https://bugs.webkit.org/show_bug.cgi?id=215014)
-- 📖 [WebKit Bug 313797 / Commit ebeb545: Propagate user gestures through sendMessage](https://github.com/WebKit/WebKit/commit/ebeb54525a799f353a717f2492acf7066433efbc)
-- 📖 [StackOverflow: Safari `window.open` async workaround (Standard industry workaround for Safari async popups, but note its severe side effects in Native WebView environments)](https://stackoverflow.com/questions/20696041/window-openurl-blank-not-working-on-imac-safari)
-- 📖 [Android Official Documentation: WebViewClient.shouldOverrideUrlLoading (Notes that it does not intercept POST requests)](https://developer.android.com/reference/android/webkit/WebViewClient#shouldOverrideUrlLoading)
-- 📖 [WebKit Bugzilla #140188: WKNavigationAction.request.HTTPBody is nil (The historic issue of lost POST body during iOS interception)](https://bugs.webkit.org/show_bug.cgi?id=140188)
+- 📖 [WebKit Bugzilla #140188: WKNavigationAction.request.HTTPBody is nil on form post](https://bugs.webkit.org/show_bug.cgi?id=140188)
+- 📖 [GitHub WICG/interventions #12: User gesture required for sensitive operations (WebKit 1s setTimeout grace period discussion)](https://github.com/WICG/interventions/issues/12)
+- 📖 [WebKit Commit ebeb545: Propagate user gestures through sendMessage](https://github.com/WebKit/WebKit/commit/ebeb54525a799f353a717f2492acf7066433efbc)
+- 📖 [StackOverflow: Safari window.open async workaround (Side effects in WebView)](https://stackoverflow.com/questions/20696041/window-openurl-blank-not-working-on-imac-safari)
+
+### 🤖 Android / Chromium Official & Source
+- 📖 [Android Developer: WebViewClient.shouldOverrideUrlLoading (Note: not called for POST requests)](https://developer.android.com/reference/android/webkit/WebViewClient#shouldOverrideUrlLoading(android.webkit.WebView,%20java.lang.String))
+- 📖 [AOSP Source: WebViewClient.java (Official JavaDoc: not called for POST requests)](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/webkit/WebViewClient.java)
+- 📖 [Android Developer: WebSettings.setJavaScriptCanOpenWindowsAutomatically](https://developer.android.com/reference/android/webkit/WebSettings#setJavaScriptCanOpenWindowsAutomatically(boolean))
+- 📖 [Chromium Blog: User Activation v2 (UAv2) Mechanism](https://developer.chrome.com/blog/user-activation)
+- 📖 [Chromium Source: user_activation_state.h (kActivationLifespan 5000ms Constant)](https://github.com/chromium/chromium/blob/7115760f2e6dafa470a579182b2709ded743e683/third_party/blink/public/common/frame/user_activation_state.h#L23)
+- 📖 [Chromium Source: user_activation_state.cc (Token Refresh Implementation)](https://github.com/chromium/chromium/blob/main/third_party/blink/common/frame/user_activation_state.cc)
+
+### 🌐 Web Standards (W3C / WHATWG / MDN)
+- 📖 [MDN Web Docs: Transient Activation](https://developer.mozilla.org/en-US/docs/Glossary/Transient_activation)
+- 📖 [MDN Web Docs: UserActivation API (navigator.userActivation)](https://developer.mozilla.org/en-US/docs/Web/API/UserActivation)
+- 📖 [WHATWG HTML Standard: Form submission algorithm](https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#form-submission-algorithm)
+- 📖 [Mozilla Bugzilla #1469730: window.open popup is blocked from microtask](https://bugzilla.mozilla.org/show_bug.cgi?id=1469730)
+
 ---
 
 > [!TIP]
-> **Want to see actual test results and recordings?**
-> The iOS and Android interception test recordings of this project have been unified and arranged in the [README_en.md](../README_en.md) on the project's homepage.
+> **Looking for real-device benchmark test results and recordings?**
+> The iOS and Android interception test recordings are organized on the project homepage in [README.md](../README.md).

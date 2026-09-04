@@ -1,67 +1,86 @@
-# Android WebView Fragmentation Analysis: Impact of Chromium Core, Third-Party Kernels, and Non-GMS Devices
+# Android WebView Fragmentation Analysis: Chromium Core, Third-Party Kernels, and Non-GMS Devices
 
 [中文版](android_webview_fragmentation.md)
 
-The Android platform has always been known for its "Fragmentation". However, when exploring WebView popups and the "User Activation v2 (UAv2)" mechanism, the impact does not simply depend on the phone's hardware brand, but on the **source and version of the underlying browser kernel**.
-
-This document will analyze the gaps and limitations that front-end may encounter when using `window.open`, dynamically creating `<a target="_blank">` tags, or performing asynchronous redirections under different Android environments.
-
-## 1. General Brands with GMS: Highly Consistent Chromium Experience
-
-Since Android 5.0 (Lollipop), Google decoupled the Android System WebView from the bottom layer of the operating system and changed it to be distributed and updated independently via the Google Play Store.
-
-- **Consistent UAv2 Mechanism**: Whether it's Samsung's OneUI, Xiaomi's international MIUI, or Pixel systems, as long as the device is equipped with Google Mobile Services (GMS) and regularly updated online, the underlying engine running is the official latest version of the Chromium engine.
-- **Universal Test Results**: On these devices, the Chromium UAv2 "5-second credential grace period (`kActivationLifespan`)" mechanism operates highly consistently and strictly. As long as the asynchronous API delay is within 5 seconds (and not obstructed during this period), `window.open` or dynamically triggered `<a target="_blank">` can be successfully captured and passed by the native layer.
+The Android platform has long been known for its "fragmentation." However, when discussing WebView popups and the "User Activation v2 (UAv2)" mechanism, the impact depends not merely on the hardware manufacturer, but fundamentally on the **source and version of the underlying browser kernel, as well as native Android WebViewClient architectural constraints**.
 
 > [!NOTE]
-> The handling of the 5-second grace period for Macrotask and Microtask (Promise) in the underlying Event Loop of Android Chromium has been unified in Section 4 of: [async_popup_blocker_history_en.md](./async_popup_blocker_history_en.md).
-
-## 2. True Fragmentation Minefield One: Third-Party Kernels of Super Apps (e.g., Tencent X5)
-
-In the Android ecosystem, the most profound variables usually come from "third-party super Apps". Many super Apps (such as WeChat, QQ), in order to control rendering performance and security, **do not use** the system's built-in Android WebView, but instead embed their own browser kernel (such as Tencent's self-developed X5 kernel).
-
-- **Custom Defense Rules**: The security policies and popup (`window.open` and `<a target="_blank">`) interception logic of the X5 kernel are completely different from Chromium, usually much stricter and contain undisclosed black-box restrictions.
-- **Mechanism Failure**: In this environment, Chromium's 5-second grace period does not apply. Not only will asynchronous popups fail, but even in some scenarios, synchronous click events will be ruthlessly blocked by special rules.
-
-## 3. True Fragmentation Minefield Two: Phones without Google Services (e.g., Huawei HarmonyOS)
-
-On non-GMS devices (such as Huawei phones after sanctions, or domestic versions of various brands sold exclusively for the mainland China market), due to the inability to access the Google Play Store, they cannot obtain Google's official System WebView updates.
-
-- **Lagging Kernel Versions**: These devices usually rely on the WebView engine maintained by the manufacturer (such as Huawei's HMS Core built-in engine, usually forked from an older version of Chromium).
-- **Residual Old Standards**: These old or heavily modified Chromium engines may still be stuck in older and stricter versions regarding the determination of User Gesture. This causes asynchronous redirections that were expected to pass relying on the UAv2 mechanism to be directly blocked on such devices.
-
-## 4. True Fragmentation Minefield Three: OEM Heavy Modifications and System Restrictions
-
-Although most modern devices use the standard Chromium WebView, major smartphone brands (OEMs) still intervene to varying degrees in WebView behaviors and package selections at the system level. These system-level restrictions interfere with the expected behavior of standard Web APIs:
-
-- **Samsung (Custom Rendering and Forced Behavior)**: Samsung deeply modified the WebView at the system level, which can cause abnormalities even when the user is doing "normal foreground operations". The most famous disaster is that Samsung WebView forces its own "Dark Mode" algorithm, directly ignoring the front-end standard CSS `prefers-color-scheme`, resulting in broken Web UI layouts or forced color inversion (see the famous discussion [Stack Overflow: Samsung Internet forces dark mode](https://stackoverflow.com/questions/66094087/samsung-internet-forces-dark-mode)). This highlights the brutal intervention of OEM brands in standard Web behaviors.
-- **Xiaomi and Other Brands (Implicit Intent Interception and URL Scheme Failure)**: During normal foreground use, if a webpage directly triggers deep links like `market://` or `intent://`, the default Android WebView not only fails to recognize them but also directly throws an `ERR_UNKNOWN_URL_SCHEME` error (see the classic debugging discussion [Stack Overflow: WebView ERR_UNKNOWN_URL_SCHEME](https://stackoverflow.com/questions/41693263/android-webview-err-unknown-url-scheme)). More seriously, in highly customized systems like Xiaomi (MIUI / HyperOS), even if the native end tries to intercept and handle it, the system often kidnaps these Intents directly from the bottom layer and **forces redirection to its own "GetApps Store" or "Built-in Browser"**. This system-level malicious interception completely breaks the illusion that the front-end can rely solely on a set of Web Intents to eat all devices.
-
-It must be emphasized that although the above debugging discussions were created early, this exactly reflects that **Android's underlying Intent handling flaws and OEM interception strategies are a long-unsolved "historical karma"**. Even as operating systems continue to upgrade, major OEM brands still maintain such special restrictions at the bottom layer to consolidate their own ecosystems. This proves once again that relying solely on front-end native `window.open` or `<a target="_blank">` for cross-platform or cross-App redirection is extremely fragile and unreliable in the fragmented Android environment.
-
-## 5. The Common Dead End Across Platforms: App Refusing to Implement `WebChromeClient`
-
-Just as the iOS side relies on `WKUIDelegate`, the life and death of front-end popups on Android are also in the hands of native developers.
-
-If a webpage is opened through the built-in browser of third-party Android Apps like Facebook or LINE, as long as the native developer of the App does not implement `onCreateWindow` in `WebChromeClient` (or implements it but deliberately does not handle it), then the `window.open` issued by the front-end or clicking `<a target="_blank">` will also have no response. This has nothing to do with whether the bottom layer has a Chromium 5-second grace period; it is purely a deliberate enclosure at the application layer.
-
-## 6. Appendix: Android WebView Versions and Support Lifecycle (Recorded on 2026-07-17)
-
-When planning cross-platform WebView development, it is very important to understand the evolution and support boundaries of Android WebView:
-
-- **The Starting Point of Independent Updates**: Google made a major architectural change in **Android 5.0 (Lollipop, Released 2014)**, decoupling WebView from the operating system core and changing it to update via the Google Play Store. This solved the previous disaster where "if the system doesn't update, WebView can never be upgraded".
-- **The Limit of Play Store Updates**: Although it can be updated via the Play Store, Google still periodically phases out excessively old Android systems. For example, old systems like Android 5, 6, 7 can no longer obtain the latest version of the Chromium core from the Play Store. This means that the WebView engine version of these old devices has been permanently frozen and may not support the latest Web APIs or may have unpatched security vulnerabilities.
-- **Officially Stated Version Support**: As of **July 2026**, the minimum support version for most modern and mainstream Apps is usually set at **Android 8.0 (API 26)** or **Android 9.0 (API 28)**.
-  - **Main Reason for Choosing Android 8.0 (Released Aug 2017)**: Starting from this version, WebView enables **Multiprocess Architecture** by default, so webpage crashes are no longer likely to cause the entire App to crash.
-  - **Main Reason for Choosing Android 9.0 (Released Aug 2018)**: From this version, the **default is changed to block HTTP (forcing HTTPS)**, and the **Display Cutout API** is officially introduced. Both of these have a decisive impact on the security of WebView and front-end layout avoidance.
-  - Setting the bottom line at these two watersheds can ensure that the vast majority of users' devices can normally receive Chromium engine updates in recent years, maintaining a relatively consistent rendering and execution environment.
+> **📱 Benchmark Environment**
+> - 🤖 **Android Device**: Samsung Galaxy Z Fold5 (Android 16 / One UI 8.5 / Chromium WebView)
 
 ---
 
-## Conclusion and Countermeasures
+## 1. GMS-Enabled Mainstream Devices: Highly Consistent Chromium & UAv2 Experience
 
-Although modern Android phones equipped with GMS behave largely consistently on WebView, as long as the target audience of the project includes **users who use super Apps (like WeChat)**, **users using non-GMS devices (mainland China market)**, or even **phones subjected to system-level restrictions from major OEMs (Samsung, Xiaomi, etc.)**, the stability of relying on native popups (`window.open` or `<a target="_blank">`) remains a disaster.
+Since Android 5.0 (Lollipop), Google decoupled Android System WebView from the OS core to distribute independent updates via the Google Play Store.
 
-This further reinforces our conclusion that we should adopt **JSBridge** or **Server-side Intermediary Architectures (302 Redirect / Form Bridge)**:
+- **Consistent UAv2 Mechanism**: Across Samsung One UI, Xiaomi HyperOS, or Pixel devices, as long as GMS is present and updated, the underlying engine is the latest official Chromium core.
+- **Universal Test Results & 5-Second Lifespan**: On these devices, Chromium's 5-second transient activation grace period (`kActivationLifespan`) operates consistently. As long as async delays stay within 5 seconds of the last user interaction, `window.open` or dynamic `<a target="_blank">` popups pass. If there is no further interaction and the delay exceeds 5 seconds, activation expires and the popup is blocked.
+- **Token Refresh Mechanism**: The 5-second timer is not rigidly fixed to the initial click. Chromium implements a token refresh mechanism—as long as the user **continually interacts with the screen (e.g., scrolling, touching, or clicking again)** within the 5-second countdown, the timer is **reset and renewed**. Therefore, even if an async API takes longer to respond, continuous user screen engagement keeps the activation token alive and allows the popup!
 
-By delegating the redirection authority to native APIs through these architectures, or by shifting the asynchronous waiting process to the backend network transport layer, we can completely bypass Chromium, WebKit, Tencent X5, and even the heavy modifications and underlying system restrictions of major phone brands, achieving a 100% stable and controllable cross-platform webpage redirection.
+---
+
+## 2. Native Architectural Blind Spot: Android `shouldOverrideUrlLoading` Never Intercepts POST
+
+In this benchmark (Samsung Galaxy Z Fold5 / Android 16), a fundamental native limitation was confirmed regarding **Form POST navigation**:
+- **Official Specification & AOSP Source Annotation**: In both the [Android Official Documentation (String url overload)](https://developer.android.com/reference/android/webkit/WebViewClient#shouldOverrideUrlLoading(android.webkit.WebView,%20java.lang.String)) and [AOSP Source Code (WebViewClient.java)](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/webkit/WebViewClient.java), it is explicitly stated: `"Note: this method is not called for POST requests."`.
+- **Consistent Modern Chromium Behavior**: Although API 24 introduced the `shouldOverrideUrlLoading(WebView, WebResourceRequest)` overload, the underlying Chromium kernel (`InterceptNavigationDelegate`) maintains this design principle—`shouldOverrideUrlLoading` is designed for URL navigation (GET requests); for form submissions carrying a POST payload, the system does not invoke this callback. To inspect or handle POST requests, developers are instructed to use lower-level APIs like `shouldInterceptRequest`.
+- **Top-Level POST Penetration**: When submitting a POST `target="_self"` form, `shouldOverrideUrlLoading` never fires, causing the request to load directly inside the WebView.
+- **New Window POST `_blank` Silence**: When submitting a POST `target="_blank"` form, although `WebChromeClient.onCreateWindow` fires, the temporary window's `WebViewClient.shouldOverrideUrlLoading` still ignores POST requests. Because the temporary `WebView` is not added to the view hierarchy, the request disappears silently in the background, appearing completely unresponsive in the UI.
+
+---
+
+## 3. Fragmentation Pitfall 1: Super App Third-Party Kernels (e.g., Tencent X5)
+
+In the Android ecosystem, major Super Apps (such as WeChat, QQ) avoid the system Android WebView and bundle custom proprietary browser engines (such as Tencent's X5 kernel).
+
+- **Custom Defense Rules**: X5's security and popup interception policies differ from standard Chromium, enforcing strict and undisclosed black-box restrictions.
+- **Mechanism Breakdown**: Chromium's 5-second UAv2 grace period does not apply under X5, breaking async popups and occasionally blocking synchronous clicks.
+
+---
+
+## 4. Fragmentation Pitfall 2: Non-GMS Devices (e.g., Huawei HarmonyOS)
+
+On devices without GMS (such as sanctioned Huawei phones or domestic Chinese market devices), Google Play Store updates are unavailable.
+
+- **Lagging Kernel Versions**: These devices rely on vendor-maintained WebView engines (such as Huawei HMS Core, often forked from older Chromium releases).
+- **Legacy Gesture Rules**: Older or customized engines lack modern gesture propagation rules, causing async popups that pass under UAv2 to be rejected.
+
+---
+
+## 5. Fragmentation Pitfall 3: OEM System Modifications and Limitations
+
+Even on standard Chromium WebViews, major smartphone manufacturers (OEMs) intervene in WebView behavior and package selection at the OS level. These system-level constraints interfere with standard Web API expectations:
+
+- **Samsung (Custom Rendering & Forced Inversions)**: Samsung aggressively alters WebView defaults, causing anomalies even during standard foreground user operations. The most notorious issue is that Samsung's WebView forces proprietary "Dark Mode" algorithms, directly ignoring standard CSS `prefers-color-scheme` and leading to broken UI or inverted colors (see [Stack Overflow: Samsung Internet forces dark mode](https://stackoverflow.com/questions/66094087/samsung-internet-forces-dark-mode)). This highlights heavy-handed OEM interventions in standard Web behavior.
+- **Xiaomi & Others (Implicit Intent Interception & Scheme Breakage)**: During normal foreground usage, if a webpage directly triggers deep links like `market://` or `intent://`, Android WebView not only fails to recognize them by default but throws `ERR_UNKNOWN_URL_SCHEME` (see [Stack Overflow: WebView ERR_UNKNOWN_URL_SCHEME](https://stackoverflow.com/questions/41693263/android-webview-err-unknown-url-scheme)). More severely, in highly customized systems like Xiaomi (MIUI / HyperOS), even if native code attempts to intercept them, the OS layer frequently hijacks these intents to **force-route users to proprietary app stores (GetApps) or built-in browsers**. This OS-level interception shatters the illusion that a single Web Intent can work across all Android devices.
+
+It must be emphasized that although some discussions are older, they accurately reflect that **Android underlying Intent handling flaws and OEM interception strategies are long-standing unresolved historical burdens**. Even as Android OS versions advance, OEMs maintain these proprietary restrictions to protect their ecosystems. This further proves that relying purely on native frontend `window.open` or `<a target="_blank">` is exceptionally fragile and unreliable under Android fragmentation.
+
+---
+
+## 6. Common Cross-Platform Pitfall: App Refuses to Implement `WebChromeClient`
+
+Just as iOS relies on `WKUIDelegate`, the lifecycle of popups on Android rests entirely in the hands of native developers.
+
+If a webpage is loaded within the in-app browser of third-party Android Apps (e.g., Facebook, LINE), as long as the native developers did not implement `onCreateWindow` in `WebChromeClient` (or implemented it but deliberately do not handle it), frontend `window.open` or `<a target="_blank">` requests will produce zero response. This is unrelated to Chromium's 5-second grace period; it is purely an intentional walled-garden design at the application layer.
+
+---
+
+## 7. Appendix: Android WebView Version & Support Lifecycle (Recorded 2026-09-04)
+
+Understanding the lifecycle of Android WebView is critical for cross-platform architecture:
+
+- **Independent Updates**: Google decoupled WebView updates via Google Play Store in **Android 5.0 (Lollipop, 2014)**.
+- **Official Version Baseline**: As of **September 2026**, mainstream apps set their minimum deployment target to **Android 8.0 (API 26)** (default Multiprocess architecture) or **Android 9.0 (API 28)** (HTTPS enforced by default, Display Cutout API).
+- **Latest Test Benchmark**: The test device in this project, **Samsung Galaxy Z Fold5** running **One UI 8.5 (Android 16)**, represents the latest Chromium WebView behavior with full UAv2 support.
+
+---
+
+## Conclusion and Strategy
+
+Although modern GMS-enabled Android devices behave consistently under Chromium, the combination of **native `shouldOverrideUrlLoading` POST omissions**, **third-party super app engines**, **non-GMS devices**, **OEM system interventions**, and **third-party apps omitting `WebChromeClient`** makes frontend native popups (`window.open` / `<a target="_blank">`) exceptionally fragile.
+
+This reinforces the architectural necessity of adopting **JSBridge** or **Server-Side Relaying (302 Redirect / Form Bridge)**:
+
+By delegating navigation to Native APIs or shifting async waiting to the server network layer, developers completely bypass Chromium, WebKit, Tencent X5, and OEM-specific constraints, achieving 100% reliable cross-platform web redirection.
